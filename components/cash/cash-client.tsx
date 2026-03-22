@@ -29,6 +29,9 @@ export function CashClient({
   const [sessions, setSessions] = useState(initialSessions)
   const [capital, setCapital] = useState(initialCapital)
   const [remittances, setRemittances] = useState(initialRemittances)
+  const [editingCapital, setEditingCapital] = useState(false)
+  const [capitalInput, setCapitalInput] = useState("")
+  const [isSavingCapital, setIsSavingCapital] = useState(false)
 
   const today = getPhilippineDate()
   const todaySessions = sessions.filter((s) => s.date === today)
@@ -45,6 +48,43 @@ export function CashClient({
     } else {
       toast.error("Failed to remove session")
     }
+  }
+
+  const handleSaveCapital = async () => {
+    const supabase = createClient()
+    const amount = parseFloat(capitalInput) || 0
+    setIsSavingCapital(true)
+    try {
+      if (capital) {
+        const { data, error } = await supabase
+          .from("capital")
+          .update({ current_balance: amount, updated_at: new Date().toISOString() })
+          .eq("id", capital.id)
+          .select().single()
+        if (!error && data) { setCapital(data); toast.success("Capital balance updated!") }
+      } else {
+        const { data, error } = await supabase
+          .from("capital")
+          .insert({ initial_amount: amount, current_balance: amount })
+          .select().single()
+        if (!error && data) { setCapital(data); toast.success("Capital set!") }
+      }
+      setEditingCapital(false)
+    } catch { toast.error("Failed to update capital") }
+    finally { setIsSavingCapital(false) }
+  }
+
+  // Called whenever a new sale is completed (can be triggered from POS)
+  const addRevenueToCapital = async (amount: number) => {
+    if (!capital || amount <= 0) return
+    const supabase = createClient()
+    const newBalance = Number(capital.current_balance) + amount
+    const { data } = await supabase
+      .from("capital")
+      .update({ current_balance: newBalance, updated_at: new Date().toISOString() })
+      .eq("id", capital.id)
+      .select().single()
+    if (data) setCapital(data)
   }
 
   return (
@@ -102,17 +142,34 @@ export function CashClient({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => { if (!editingCapital) { setCapitalInput(capital ? String(Number(capital.current_balance)) : ""); setEditingCapital(true) } }}>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-chart-3/10">
                   <History className="h-6 w-6 text-chart-3" />
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Capital Balance</p>
-                  <p className="text-2xl font-bold">
-                    ₱{capital ? Number(capital.current_balance).toFixed(2) : "0.00"}
-                  </p>
+                <div className="flex-1">
+                  <p className="text-sm text-muted-foreground">Capital Balance <span className="text-xs text-primary">(click to edit)</span></p>
+                  {editingCapital ? (
+                    <div className="flex items-center gap-2 mt-1" onClick={(e) => e.stopPropagation()}>
+                      <span className="text-lg font-bold">₱</span>
+                      <input
+                        autoFocus
+                        type="number"
+                        step="0.01"
+                        value={capitalInput}
+                        onChange={(e) => setCapitalInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleSaveCapital(); if (e.key === "Escape") setEditingCapital(false) }}
+                        className="w-32 text-xl font-bold border-b-2 border-primary bg-transparent outline-none"
+                      />
+                      <button onClick={handleSaveCapital} disabled={isSavingCapital} className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90">
+                        {isSavingCapital ? "..." : "Save"}
+                      </button>
+                      <button onClick={() => setEditingCapital(false)} className="text-xs text-muted-foreground hover:text-foreground px-1">✕</button>
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold">₱{capital ? Number(capital.current_balance).toFixed(2) : "0.00"}</p>
+                  )}
                 </div>
               </div>
             </CardContent>

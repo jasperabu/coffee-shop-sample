@@ -45,14 +45,14 @@ const navItems = [
     icon: DollarSign,
   },
   {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: BarChart3,
-  },
-  {
     title: "Transactions",
     href: "/transactions",
     icon: ClipboardList,
+  },
+    {
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: BarChart3,
   },
 ]
 

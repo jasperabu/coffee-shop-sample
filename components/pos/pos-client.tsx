@@ -163,6 +163,30 @@ export function POSClient({ initialCategories, initialProducts, initialAddons }:
       }
     }
 
+    // Add revenue to capital balance
+    if (amountPaid > 0) {
+      const { data: capitalData } = await supabase
+        .from("capital")
+        .select("*")
+        .limit(1)
+        .maybeSingle()
+      if (capitalData) {
+        // Update existing capital record
+        await supabase
+          .from("capital")
+          .update({
+            current_balance: Number(capitalData.current_balance) + amountPaid,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", capitalData.id)
+      } else {
+        // No capital record yet — create one with this sale as starting balance
+        await supabase
+          .from("capital")
+          .insert({ initial_amount: amountPaid, current_balance: amountPaid })
+      }
+    }
+
     // Clear cart and close dialog
     setCartItems([])
     setCheckoutOpen(false)

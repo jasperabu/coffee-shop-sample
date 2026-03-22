@@ -158,6 +158,15 @@ export interface Remittance {
   created_at: string
 }
 
+export interface Capital {
+  id: string
+  initial_amount: number
+  current_balance: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface CartItem {
   id: string
   product: Product

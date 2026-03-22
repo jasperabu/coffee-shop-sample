@@ -30,9 +30,12 @@ import {
   ShoppingBag,
   Banknote,
   CreditCard,
-  Clock,
-  AlertCircle,
   Pencil,
+  Trash2,
+  Plus,
+  Minus,
+  Save,
+  X,
 } from "lucide-react"
 import {
   Dialog,
@@ -40,7 +43,21 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { getPhilippineDate } from "@/lib/utils"
@@ -86,8 +103,33 @@ interface TransactionsClientProps {
 }
 
 type DateFilter = "today" | "yesterday" | "last7days" | "last30days" | "all"
-type PaymentFilter = "all" | "cash" | "gcash" | "card"
+type PaymentFilter = "all" | "cash" | "gcash" 
 type PaymentStatusFilter = "all" | "paid" | "partially_paid" | "unpaid"
+
+// Editable order state
+interface EditableItem {
+  id: string
+  product_name: string
+  size_name: string | null
+  addons_text: string
+  quantity: number
+  unit_price: number
+  total_price: number
+  notes: string
+  isNew?: boolean
+}
+
+interface EditableOrder {
+  id: string
+  order_number: number
+  customer_name: string
+  payment_method: string
+  payment_status: 'paid' | 'partially_paid' | 'unpaid'
+  amount_paid: string
+  amount_received: string
+  notes: string
+  items: EditableItem[]
+}
 
 export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
   const sidebarWidth = useSidebarWidth()
@@ -97,46 +139,39 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null)
   const [orders, setOrders] = useState(initialOrders)
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null)
-  const [editPaymentStatus, setEditPaymentStatus] = useState<'paid' | 'partially_paid' | 'unpaid'>('paid')
-  const [editAmountPaid, setEditAmountPaid] = useState("")
-  const [isUpdating, setIsUpdating] = useState(false)
 
-  // Get Philippine date for filtering
+  // Edit dialog state
+  const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Delete dialog state
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   const now = new Date()
   const phNow = toZonedTime(now, PH_TIMEZONE)
 
-  // Stats (all-time)
   const stats = useMemo(() => {
     const totalOrders = orders.length
     const totalRevenue = orders.reduce((sum, o) => sum + Number(o.total), 0)
-    
     const todayStart = startOfDay(phNow)
     const todayEnd = endOfDay(phNow)
-    
     const todayOrders = orders.filter((o) => {
       const orderDate = toZonedTime(new Date(o.created_at), PH_TIMEZONE)
       return isWithinInterval(orderDate, { start: todayStart, end: todayEnd })
     })
-    
     const todayOrdersCount = todayOrders.length
     const todayRevenue = todayOrders.reduce((sum, o) => sum + Number(o.total), 0)
-    
     return { totalOrders, totalRevenue, todayOrdersCount, todayRevenue }
   }, [orders, phNow])
 
-  // Filter orders
   const filteredOrders = useMemo(() => {
     let filtered = [...orders]
-
-    // Date filter
     if (dateFilter !== "all") {
       const todayStart = startOfDay(phNow)
       const todayEnd = endOfDay(phNow)
-
       filtered = filtered.filter((order) => {
         const orderDate = toZonedTime(new Date(order.created_at), PH_TIMEZONE)
-
         switch (dateFilter) {
           case "today":
             return isWithinInterval(orderDate, { start: todayStart, end: todayEnd })
@@ -153,22 +188,12 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
         }
       })
     }
-
-    // Payment filter
     if (paymentFilter !== "all") {
-      filtered = filtered.filter(
-        (order) => order.payment_method.toLowerCase() === paymentFilter
-      )
+      filtered = filtered.filter((order) => order.payment_method.toLowerCase() === paymentFilter)
     }
-
-    // Payment status filter
     if (paymentStatusFilter !== "all") {
-      filtered = filtered.filter(
-        (order) => order.payment_status === paymentStatusFilter
-      )
+      filtered = filtered.filter((order) => order.payment_status === paymentStatusFilter)
     }
-
-    // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
@@ -177,77 +202,157 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
           (order.customer_name?.toLowerCase().includes(query) ?? false)
       )
     }
-
     return filtered
   }, [orders, dateFilter, paymentFilter, paymentStatusFilter, searchQuery, phNow])
 
-  // Group orders by date
   const groupedOrders = useMemo(() => {
     const groups: { [key: string]: Order[] } = {}
-
     filteredOrders.forEach((order) => {
       const orderDate = toZonedTime(new Date(order.created_at), PH_TIMEZONE)
       const dateKey = format(orderDate, "yyyy-MM-dd")
-
-      if (!groups[dateKey]) {
-        groups[dateKey] = []
-      }
+      if (!groups[dateKey]) groups[dateKey] = []
       groups[dateKey].push(order)
     })
-
-    // Sort groups by date (newest first)
-    const sortedGroups = Object.entries(groups).sort(
-      ([a], [b]) => new Date(b).getTime() - new Date(a).getTime()
-    )
-
-    return sortedGroups
+    return Object.entries(groups).sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
   }, [filteredOrders])
 
   const filteredTotal = filteredOrders.reduce((sum, o) => sum + Number(o.total), 0)
 
-  const openEditPaymentDialog = (order: Order) => {
-    setEditingOrder(order)
-    setEditPaymentStatus(order.payment_status)
-    setEditAmountPaid(String(order.amount_paid))
+  // Open edit dialog — populate editable state from order
+  const openEditDialog = (order: Order) => {
+    setEditingOrder({
+      id: order.id,
+      order_number: order.order_number,
+      customer_name: order.customer_name ?? "",
+      payment_method: order.payment_method,
+      payment_status: order.payment_status,
+      amount_paid: String(order.amount_paid),
+      amount_received: String(order.amount_received ?? ""),
+      notes: order.notes ?? "",
+      items: (order.items ?? []).map((item) => ({
+        id: item.id,
+        product_name: item.product?.name ?? "Unknown",
+        size_name: item.size?.size_name ?? null,
+        addons_text: item.addons?.map((a) => a.addon?.name).filter(Boolean).join(", ") ?? "",
+        quantity: item.quantity,
+        unit_price: Number(item.unit_price),
+        total_price: Number(item.total_price),
+        notes: item.notes ?? "",
+      })),
+    })
   }
 
-  const handleSavePayment = async () => {
+  const updateItemQty = (index: number, delta: number) => {
     if (!editingOrder) return
-    setIsUpdating(true)
+    const items = [...editingOrder.items]
+    const newQty = Math.max(1, items[index].quantity + delta)
+    items[index] = {
+      ...items[index],
+      quantity: newQty,
+      total_price: items[index].unit_price * newQty,
+    }
+    setEditingOrder({ ...editingOrder, items })
+  }
 
+  const updateItemPrice = (index: number, value: string) => {
+    if (!editingOrder) return
+    const items = [...editingOrder.items]
+    const price = parseFloat(value) || 0
+    items[index] = {
+      ...items[index],
+      unit_price: price,
+      total_price: price * items[index].quantity,
+    }
+    setEditingOrder({ ...editingOrder, items })
+  }
+
+  const updateItemField = (index: number, field: keyof EditableItem, value: string) => {
+    if (!editingOrder) return
+    const items = [...editingOrder.items]
+    items[index] = { ...items[index], [field]: value }
+    setEditingOrder({ ...editingOrder, items })
+  }
+
+  const removeItem = (index: number) => {
+    if (!editingOrder) return
+    const items = editingOrder.items.filter((_, i) => i !== index)
+    setEditingOrder({ ...editingOrder, items })
+  }
+
+  const addNewItem = () => {
+    if (!editingOrder) return
+    const newItem: EditableItem = {
+      id: `new-${Date.now()}`,
+      product_name: "",
+      size_name: null,
+      addons_text: "",
+      quantity: 1,
+      unit_price: 0,
+      total_price: 0,
+      notes: "",
+      isNew: true,
+    }
+    setEditingOrder({ ...editingOrder, items: [...editingOrder.items, newItem] })
+  }
+
+  const computedSubtotal = editingOrder
+    ? editingOrder.items.reduce((sum, i) => sum + i.total_price, 0)
+    : 0
+
+  const handleSaveOrder = async () => {
+    if (!editingOrder) return
+    setIsSaving(true)
     try {
       const supabase = createClient()
-      let newAmountPaid = Number(editingOrder.amount_paid)
-      const newPaymentStatus = editPaymentStatus
 
-      if (editPaymentStatus === "paid") {
-        newAmountPaid = Number(editingOrder.total)
-      } else if (editPaymentStatus === "partially_paid") {
-        newAmountPaid = parseFloat(editAmountPaid) || 0
-      } else if (editPaymentStatus === "unpaid") {
-        newAmountPaid = 0
-      }
+      let finalAmountPaid = parseFloat(editingOrder.amount_paid) || 0
+      if (editingOrder.payment_status === "paid") finalAmountPaid = computedSubtotal
+      if (editingOrder.payment_status === "unpaid") finalAmountPaid = 0
 
-      await supabase.from("orders").update({
-        payment_status: newPaymentStatus,
-        amount_paid: newAmountPaid,
-      }).eq("id", editingOrder.id)
+      const amountReceived = parseFloat(editingOrder.amount_received) || null
+      const changeAmount = amountReceived ? amountReceived - computedSubtotal : null
 
-      // If status changed to paid or partial, update the current open cash session
-      const additionalCash = newAmountPaid - Number(editingOrder.amount_paid)
-      if (additionalCash > 0) {
-        const today = getPhilippineDate()
-        const { data: session } = await supabase
-          .from("cash_sessions")
-          .select()
-          .eq("date", today)
-          .eq("status", "open")
-          .single()
+      // Update order
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          customer_name: editingOrder.customer_name || null,
+          subtotal: computedSubtotal,
+          total: computedSubtotal,
+          payment_method: editingOrder.payment_method,
+          payment_status: editingOrder.payment_status,
+          amount_paid: finalAmountPaid,
+          amount_received: amountReceived,
+          change_amount: changeAmount,
+          notes: editingOrder.notes || null,
+        })
+        .eq("id", editingOrder.id)
 
-        if (session) {
-          await supabase.from("cash_sessions").update({
-            total_sales: Number(session.total_sales) + additionalCash
-          }).eq("id", session.id)
+      if (orderError) throw orderError
+
+      // Update existing items and insert new ones
+      for (const item of editingOrder.items) {
+        if (item.isNew) {
+          // Insert new item
+          await supabase.from("order_items").insert({
+            order_id: editingOrder.id,
+            product_id: null, // manual entry
+            size_id: null,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.total_price,
+            notes: item.notes || null,
+          })
+        } else {
+          await supabase
+            .from("order_items")
+            .update({
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              total_price: item.total_price,
+              notes: item.notes || null,
+            })
+            .eq("id", item.id)
         }
       }
 
@@ -255,23 +360,58 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
       setOrders((prev) =>
         prev.map((o) =>
           o.id === editingOrder.id
-            ? { ...o, payment_status: newPaymentStatus, amount_paid: newAmountPaid }
+            ? {
+                ...o,
+                customer_name: editingOrder.customer_name || null,
+                subtotal: computedSubtotal,
+                total: computedSubtotal,
+                payment_method: editingOrder.payment_method,
+                payment_status: editingOrder.payment_status,
+                amount_paid: finalAmountPaid,
+                amount_received: amountReceived,
+                change_amount: changeAmount,
+                notes: editingOrder.notes || null,
+                items: o.items.map((item) => {
+                  const edited = editingOrder.items.find((ei) => ei.id === item.id)
+                  if (!edited) return item
+                  return {
+                    ...item,
+                    quantity: edited.quantity,
+                    unit_price: edited.unit_price,
+                    total_price: edited.total_price,
+                    notes: edited.notes || null,
+                  }
+                }),
+              }
             : o
         )
       )
 
-      toast.success(
-        newPaymentStatus === "paid"
-          ? `Order #${editingOrder.order_number} marked as fully paid!`
-          : `Payment updated for ${editingOrder.customer_name || "Walk-in"}`
-      )
-
+      toast.success(`Order #${editingOrder.order_number.toString().padStart(3, "0")} updated!`)
       setEditingOrder(null)
     } catch (error) {
-      console.error("Error updating payment:", error)
-      toast.error("Failed to update payment")
+      console.error("Error saving order:", error)
+      toast.error("Failed to save changes")
     } finally {
-      setIsUpdating(false)
+      setIsSaving(false)
+    }
+  }
+
+  const handleDeleteOrder = async () => {
+    if (!deletingOrderId) return
+    setIsDeleting(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from("orders").delete().eq("id", deletingOrderId)
+      if (error) throw error
+      setOrders((prev) => prev.filter((o) => o.id !== deletingOrderId))
+      toast.success("Order deleted")
+      setDeletingOrderId(null)
+    } catch (error) {
+      console.error("Error deleting order:", error)
+      toast.error("Failed to delete order")
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -306,10 +446,7 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
   return (
     <div className="min-h-screen bg-background">
       <SidebarNav />
-      <main
-        className="transition-all duration-300 ease-in-out"
-        style={{ marginLeft: sidebarWidth }}
-      >
+      <main className="transition-all duration-300 ease-in-out" style={{ marginLeft: sidebarWidth }}>
         <div className="p-6">
           {/* Header */}
           <div className="mb-6">
@@ -319,69 +456,38 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-primary/10 p-2">
-                    <ShoppingBag className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Orders</p>
-                    <p className="text-2xl font-bold">{stats.totalOrders}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-accent/10 p-2">
-                    <Banknote className="h-5 w-5 text-accent" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Revenue</p>
-                    <p className="text-2xl font-bold">₱{stats.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-emerald-500/10 p-2">
-                    <Calendar className="h-5 w-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Today's Orders</p>
-                    <p className="text-2xl font-bold">{stats.todayOrdersCount}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-blue-500/10 p-2">
-                    <CreditCard className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Today's Revenue</p>
-                    <p className="text-2xl font-bold">₱{stats.todayRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-primary/10 p-2"><ShoppingBag className="h-5 w-5 text-primary" /></div>
+                <div><p className="text-sm text-muted-foreground">Total Orders</p><p className="text-2xl font-bold">{stats.totalOrders}</p></div>
+              </div>
+            </CardContent></Card>
+            <Card><CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-accent/10 p-2"><Banknote className="h-5 w-5 text-accent" /></div>
+                <div><p className="text-sm text-muted-foreground">Total Revenue</p><p className="text-2xl font-bold">₱{stats.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></div>
+              </div>
+            </CardContent></Card>
+            <Card><CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-emerald-500/10 p-2"><Calendar className="h-5 w-5 text-emerald-600" /></div>
+                <div><p className="text-sm text-muted-foreground">Today's Orders</p><p className="text-2xl font-bold">{stats.todayOrdersCount}</p></div>
+              </div>
+            </CardContent></Card>
+            <Card><CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-blue-500/10 p-2"><CreditCard className="h-5 w-5 text-blue-600" /></div>
+                <div><p className="text-sm text-muted-foreground">Today's Revenue</p><p className="text-2xl font-bold">₱{stats.todayRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></div>
+              </div>
+            </CardContent></Card>
           </div>
 
           {/* Filters */}
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex flex-wrap items-center gap-4">
-                {/* Date Filter */}
                 <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilter)}>
-                  <SelectTrigger className="w-[160px]">
-                    <SelectValue placeholder="Select date" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select date" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="today">Today</SelectItem>
                     <SelectItem value="yesterday">Yesterday</SelectItem>
@@ -390,27 +496,15 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
                     <SelectItem value="all">All Time</SelectItem>
                   </SelectContent>
                 </Select>
-
-                {/* Payment Filter */}
                 <div className="flex gap-1">
-                  {(["all", "cash", "gcash", "card"] as PaymentFilter[]).map((method) => (
-                    <Button
-                      key={method}
-                      variant={paymentFilter === method ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setPaymentFilter(method)}
-                      className="capitalize"
-                    >
+                  {(["all", "cash", "gcash"] as PaymentFilter[]).map((method) => (
+                    <Button key={method} variant={paymentFilter === method ? "default" : "outline"} size="sm" onClick={() => setPaymentFilter(method)} className="capitalize">
                       {method === "all" ? "All" : method}
                     </Button>
                   ))}
                 </div>
-
-                {/* Payment Status Filter */}
                 <Select value={paymentStatusFilter} onValueChange={(v) => setPaymentStatusFilter(v as PaymentStatusFilter)}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="paid">Paid</SelectItem>
@@ -418,20 +512,11 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
                     <SelectItem value="unpaid">Unpaid</SelectItem>
                   </SelectContent>
                 </Select>
-
-                {/* Search */}
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by order # or customer..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
+                  <Input placeholder="Search by order # or customer..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
                 </div>
               </div>
-
-              {/* Summary */}
               <div className="mt-4 text-sm text-muted-foreground">
                 Showing {filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} · ₱{filteredTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })} total
               </div>
@@ -445,104 +530,76 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
                 <CardContent className="py-16 text-center">
                   <Receipt className="mx-auto h-12 w-12 text-muted-foreground/50" />
                   <h3 className="mt-4 text-lg font-medium">No transactions found</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Try adjusting your filters or date range
-                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">Try adjusting your filters or date range</p>
                 </CardContent>
               </Card>
             ) : (
               <div className="space-y-6">
-                {groupedOrders.map(([dateKey, orders]) => {
+                {groupedOrders.map(([dateKey, dayOrders]) => {
                   const groupDate = parseISO(dateKey)
-                  const groupTotal = orders.reduce((sum, o) => sum + Number(o.total), 0)
-
+                  const groupTotal = dayOrders.reduce((sum, o) => sum + Number(o.total), 0)
                   return (
                     <div key={dateKey}>
-                      {/* Date Group Header */}
                       <div className="flex items-center gap-3 mb-3">
                         <div className="flex items-center gap-2">
                           <Calendar className="h-4 w-4 text-primary" />
-                          <span className="font-semibold">
-                            {format(groupDate, "MMMM d, yyyy")}
-                          </span>
+                          <span className="font-semibold">{format(groupDate, "MMMM d, yyyy")}</span>
                         </div>
                         <span className="text-sm text-muted-foreground">
-                          · {orders.length} order{orders.length !== 1 ? "s" : ""} · ₱{groupTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                          · {dayOrders.length} order{dayOrders.length !== 1 ? "s" : ""} · ₱{groupTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                         </span>
                       </div>
-
-                      {/* Orders in Group */}
                       <div className="space-y-2">
-                        {orders.map((order) => {
+                        {dayOrders.map((order) => {
                           const orderTime = toZonedTime(new Date(order.created_at), PH_TIMEZONE)
                           const isExpanded = expandedOrderId === order.id
-
                           return (
-                            <Collapsible
-                              key={order.id}
-                              open={isExpanded}
-                              onOpenChange={(open) => setExpandedOrderId(open ? order.id : null)}
-                            >
+                            <Collapsible key={order.id} open={isExpanded} onOpenChange={(open) => setExpandedOrderId(open ? order.id : null)}>
                               <Card className="overflow-hidden">
                                 <CollapsibleTrigger className="w-full" asChild>
                                   <div className="p-4 hover:bg-muted/50 transition-colors cursor-pointer">
                                     <div className="flex items-start justify-between gap-4">
-                                      {/* Left: Order Info */}
                                       <div className="flex items-start gap-3 flex-1 min-w-0">
                                         <div className="mt-0.5">
-                                          {isExpanded ? (
-                                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                          ) : (
-                                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                          )}
+                                          {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-2 flex-wrap">
                                             <span className="font-bold text-primary">#{order.order_number.toString().padStart(3, "0")}</span>
-                                            <span className="text-sm text-muted-foreground">
-                                              {format(orderTime, "h:mm a")}
-                                            </span>
+                                            <span className="text-sm text-muted-foreground">{format(orderTime, "h:mm a")}</span>
                                           </div>
-                                          <div className="text-sm font-medium mt-1 truncate">
-                                            {order.customer_name || "Walk-in"}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground mt-1 truncate">
-                                            {getItemsSummary(order.items)}
-                                          </div>
+                                          <div className="text-sm font-medium mt-1 truncate">{order.customer_name || "Walk-in"}</div>
+                                          <div className="text-xs text-muted-foreground mt-1 truncate">{getItemsSummary(order.items)}</div>
                                         </div>
                                       </div>
-
-                                      {/* Right: Status & Amount */}
                                       <div className="flex flex-col items-end gap-2 shrink-0">
-                                        <span className="font-bold text-lg">
-                                          ₱{Number(order.total).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                                        </span>
+                                        <span className="font-bold text-lg">₱{Number(order.total).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
                                         <div className="flex items-center gap-2 flex-wrap justify-end">
                                           {getPaymentStatusBadge(order.payment_status, Number(order.total), Number(order.amount_paid))}
                                           {order.payment_status === "paid" && getPaymentBadge(order.payment_method)}
-                                        </div>
-                                        {(order.payment_status === "unpaid" || order.payment_status === "partially_paid") && (
                                           <Button
-                                            variant="default"
+                                            variant="outline"
                                             size="sm"
-                                            onClick={(e) => {
-                                              e.stopPropagation()
-                                              openEditPaymentDialog(order)
-                                            }}
-                                            className="mt-1"
+                                            onClick={(e) => { e.stopPropagation(); openEditDialog(order) }}
+                                            className="h-6 px-2 text-xs"
                                           >
-                                            <Pencil className="h-3 w-3 mr-1" />
-                                            Collect Payment
+                                            <Pencil className="h-3 w-3 mr-1" /> Edit
                                           </Button>
-                                        )}
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={(e) => { e.stopPropagation(); setDeletingOrderId(order.id) }}
+                                            className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                                          >
+                                            <Trash2 className="h-3 w-3 mr-1" /> Delete
+                                          </Button>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
                                 </CollapsibleTrigger>
-
                                 <CollapsibleContent>
                                   <div className="border-t bg-muted/30 p-4">
-                                    {/* Items */}
                                     <div className="space-y-2 mb-4">
                                       <h4 className="text-sm font-medium text-muted-foreground">Items</h4>
                                       {order.items?.map((item) => (
@@ -551,25 +608,19 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
                                             {item.quantity}x {item.product?.name ?? "Unknown"}
                                             {item.size && ` (${item.size.size_name})`}
                                             {item.addons?.length > 0 && (
-                                              <span className="text-muted-foreground">
-                                                {" "}+ {item.addons.map((a) => a.addon?.name).filter(Boolean).join(", ")}
-                                              </span>
+                                              <span className="text-muted-foreground"> + {item.addons.map((a) => a.addon?.name).filter(Boolean).join(", ")}</span>
                                             )}
                                           </span>
                                           <span>₱{Number(item.total_price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
                                         </div>
                                       ))}
                                     </div>
-
-                                    {/* Notes */}
                                     {order.notes && (
                                       <div className="mb-4">
                                         <h4 className="text-sm font-medium text-muted-foreground">Notes</h4>
                                         <p className="text-sm">{order.notes}</p>
                                       </div>
                                     )}
-
-                                    {/* Payment Details */}
                                     <div className="mb-4 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-[600px]">
                                       <div>
                                         <span className="text-sm text-muted-foreground">Payment Status</span>
@@ -593,24 +644,8 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
                                           <p className="font-medium text-amber-600">₱{(Number(order.total) - Number(order.amount_paid)).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
                                         </div>
                                       )}
-                                      {order.payment_method.toLowerCase() === "cash" && order.amount_received && order.payment_status === "paid" && (
-                                        <>
-                                          <div>
-                                            <span className="text-sm text-muted-foreground">Amount Received</span>
-                                            <p className="font-medium">₱{Number(order.amount_received).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-                                          </div>
-                                          <div>
-                                            <span className="text-sm text-muted-foreground">Change</span>
-                                            <p className="font-medium">₱{Number(order.change_amount ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-                                          </div>
-                                        </>
-                                      )}
                                     </div>
-
-                                    {/* Timestamp */}
-                                    <div className="text-xs text-muted-foreground">
-                                      {format(orderTime, "MMMM d, yyyy 'at' h:mm:ss a")}
-                                    </div>
+                                    <div className="text-xs text-muted-foreground">{format(orderTime, "MMMM d, yyyy 'at' h:mm:ss a")}</div>
                                   </div>
                                 </CollapsibleContent>
                               </Card>
@@ -627,76 +662,236 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
         </div>
       </main>
 
-      {/* Edit Payment Dialog */}
+      {/* ── FULL EDIT DIALOG ── */}
       <Dialog open={!!editingOrder} onOpenChange={(open) => !open && setEditingOrder(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              Edit Payment - Order #{editingOrder?.order_number.toString().padStart(3, "0")}
-            </DialogTitle>
+            <DialogTitle>Edit Order #{editingOrder?.order_number.toString().padStart(3, "0")}</DialogTitle>
+            <DialogDescription>Make changes to any field below, then click Save.</DialogDescription>
           </DialogHeader>
+
           {editingOrder && (
-            <div className="space-y-4 py-4">
-              <div className="text-sm">
-                <span className="text-muted-foreground">Customer: </span>
-                <span className="font-medium">{editingOrder.customer_name || "Walk-in"}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-muted">
-                <div>
-                  <p className="text-sm text-muted-foreground">Order Total</p>
-                  <p className="text-lg font-bold">₱{Number(editingOrder.total).toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Already Paid</p>
-                  <p className="text-lg font-bold">₱{Number(editingOrder.amount_paid).toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Balance Due</p>
-                  <p className="text-lg font-bold text-amber-600">
-                    ₱{(Number(editingOrder.total) - Number(editingOrder.amount_paid)).toFixed(2)}
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-5 py-2">
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Payment Status</label>
-                <Select value={editPaymentStatus} onValueChange={(v) => setEditPaymentStatus(v as 'paid' | 'partially_paid' | 'unpaid')}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                    <SelectItem value="partially_paid">Partially Paid</SelectItem>
-                    <SelectItem value="paid">Fully Paid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {editPaymentStatus === "partially_paid" && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Amount Paid So Far (₱)</label>
+              {/* Customer & Notes */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Customer Name</Label>
                   <Input
-                    type="number"
-                    step="0.01"
-                    value={editAmountPaid}
-                    onChange={(e) => setEditAmountPaid(e.target.value)}
-                    placeholder="0.00"
-                    max={Number(editingOrder.total)}
+                    value={editingOrder.customer_name}
+                    onChange={(e) => setEditingOrder({ ...editingOrder, customer_name: e.target.value })}
+                    placeholder="Walk-in"
                   />
                 </div>
-              )}
+                <div className="space-y-1">
+                  <Label>Payment Method</Label>
+                  <Select
+                    value={editingOrder.payment_method}
+                    onValueChange={(v) => setEditingOrder({ ...editingOrder, payment_method: v })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="gcash">GCash</SelectItem>
+                      
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Order Notes</Label>
+                <Textarea
+                  value={editingOrder.notes}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, notes: e.target.value })}
+                  placeholder="Any special notes..."
+                  rows={2}
+                />
+              </div>
+
+              <Separator />
+
+              {/* Items */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base">Order Items</Label>
+                  <Button variant="outline" size="sm" onClick={addNewItem}>
+                    <Plus className="h-3 w-3 mr-1" /> Add Item
+                  </Button>
+                </div>
+
+                {editingOrder.items.map((item, index) => (
+                  <div key={item.id} className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={item.product_name}
+                        onChange={(e) => updateItemField(index, "product_name", e.target.value)}
+                        placeholder="Product name"
+                        className="flex-1 font-medium"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive shrink-0"
+                        onClick={() => removeItem(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Size</Label>
+                        <Input
+                          value={item.size_name ?? ""}
+                          onChange={(e) => updateItemField(index, "size_name", e.target.value)}
+                          placeholder="e.g. Large"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Unit Price (₱)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={item.unit_price}
+                          onChange={(e) => updateItemPrice(index, e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Quantity</Label>
+                        <div className="flex items-center gap-1">
+                          <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => updateItemQty(index, -1)}>
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
+                          <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => updateItemQty(index, 1)}>
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Add-ons</Label>
+                        <Input
+                          value={item.addons_text}
+                          onChange={(e) => updateItemField(index, "addons_text", e.target.value)}
+                          placeholder="e.g. Extra shot, Oat milk"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Item Notes</Label>
+                        <Input
+                          value={item.notes}
+                          onChange={(e) => updateItemField(index, "notes", e.target.value)}
+                          placeholder="e.g. No sugar"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="text-right text-sm font-medium text-primary">
+                      Subtotal: ₱{item.total_price.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Order Total */}
+                <div className="flex justify-between items-center px-1 pt-1">
+                  <span className="text-sm text-muted-foreground">Order Total</span>
+                  <span className="text-xl font-bold text-primary">₱{computedSubtotal.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Payment */}
+              <div className="space-y-3">
+                <Label className="text-base">Payment</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label>Payment Status</Label>
+                    <Select
+                      value={editingOrder.payment_status}
+                      onValueChange={(v) => setEditingOrder({ ...editingOrder, payment_status: v as 'paid' | 'partially_paid' | 'unpaid' })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="paid">Fully Paid</SelectItem>
+                        <SelectItem value="partially_paid">Partially Paid</SelectItem>
+                        <SelectItem value="unpaid">Unpaid</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {editingOrder.payment_status === "partially_paid" && (
+                    <div className="space-y-1">
+                      <Label>Amount Paid (₱)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editingOrder.amount_paid}
+                        onChange={(e) => setEditingOrder({ ...editingOrder, amount_paid: e.target.value })}
+                        max={computedSubtotal}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+
+                  {editingOrder.payment_method === "cash" && editingOrder.payment_status === "paid" && (
+                    <div className="space-y-1">
+                      <Label>Amount Received (₱)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editingOrder.amount_received}
+                        onChange={(e) => setEditingOrder({ ...editingOrder, amount_received: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
-          <DialogFooter>
+
+          <DialogFooter className="gap-2 mt-2">
             <Button variant="outline" onClick={() => setEditingOrder(null)}>
-              Cancel
+              <X className="h-4 w-4 mr-1" /> Cancel
             </Button>
-            <Button onClick={handleSavePayment} disabled={isUpdating}>
-              {isUpdating ? "Saving..." : "Save Changes"}
+            <Button onClick={handleSaveOrder} disabled={isSaving}>
+              <Save className="h-4 w-4 mr-1" />
+              {isSaving ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── DELETE CONFIRM ── */}
+      <AlertDialog open={!!deletingOrderId} onOpenChange={(open) => !open && setDeletingOrderId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the order and all its items. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteOrder}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete Order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
