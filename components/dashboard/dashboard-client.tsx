@@ -9,8 +9,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ComposedChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine,
 } from "recharts"
 import {
   DollarSign, ShoppingCart, TrendingUp, AlertTriangle, Package,
@@ -239,7 +239,7 @@ export function DashboardClient({
           <CardContent>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={filteredBreakdown} barCategoryGap="30%">
+                <ComposedChart data={filteredBreakdown} barCategoryGap="30%">
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.15)" />
                   <XAxis
                     dataKey="label"
@@ -248,13 +248,25 @@ export function DashboardClient({
                   />
                   <YAxis tick={{ fontSize: 11, fill: "#888" }} tickFormatter={(v) => "₱" + v.toLocaleString()} />
                   <Tooltip
-                    formatter={(value: number, name: string) => ["₱" + value.toLocaleString(), name.charAt(0).toUpperCase() + name.slice(1)]}
+                    formatter={(value: number, name: string) => {
+                      const labels: Record<string, string> = { revenue: "Revenue", expenses: "Expenses", profit: "Profit" }
+                      return ["₱" + Number(value).toLocaleString(), labels[name] || name]
+                    }}
                     contentStyle={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", fontSize: "12px" }}
                   />
+                  <ReferenceLine y={0} stroke="rgba(128,128,128,0.3)" />
                   <Bar dataKey="revenue" name="revenue" fill="#1D9E75" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="expenses" name="expenses" fill="#E24B4A" radius={[3, 3, 0, 0]} />
-                  <Line type="monotone" dataKey="profit" name="profit" stroke="#378ADD" strokeWidth={2} dot={false} />
-                </BarChart>
+                  <Line
+                    type="monotone"
+                    dataKey="profit"
+                    name="profit"
+                    stroke="#378ADD"
+                    strokeWidth={2.5}
+                    dot={{ fill: "#378ADD", r: 3, strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: "#378ADD" }}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
             <div className="flex items-center gap-4 mt-4 flex-wrap" style={{ fontSize: "12px" }}>
