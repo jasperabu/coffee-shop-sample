@@ -36,13 +36,24 @@ import { format } from "date-fns"
 import { getPhilippineDate } from "@/lib/utils"
 import { toast } from "sonner"
 
+interface Capital {
+  id: string
+  initial_amount: number
+  current_balance: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 interface RemittanceListProps {
   remittances: Remittance[]
   sessions: CashSession[]
+  capital?: Capital | null
   onUpdate: (remittances: Remittance[]) => void
+  onCapitalUpdate?: (capital: Capital) => void
 }
 
-export function RemittanceList({ remittances, sessions, onUpdate }: RemittanceListProps) {
+export function RemittanceList({ remittances, sessions, capital, onUpdate, onCapitalUpdate }: RemittanceListProps) {
   const supabase = createClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -80,12 +91,24 @@ export function RemittanceList({ remittances, sessions, onUpdate }: RemittanceLi
             .eq("id", todaySession.id)
         }
 
+        // Deduct remittance amount from capital balance
+        const remitAmount = parseFloat(amount) || 0
+        if (capital && remitAmount > 0 && onCapitalUpdate) {
+          const newBalance = Number(capital.current_balance) - remitAmount
+          const { data: updatedCapital } = await supabase
+            .from("capital")
+            .update({ current_balance: newBalance, updated_at: new Date().toISOString() })
+            .eq("id", capital.id)
+            .select().single()
+          if (updatedCapital) onCapitalUpdate(updatedCapital)
+        }
+
         onUpdate([data, ...remittances])
         setDialogOpen(false)
         setAmount("")
         setRecipient("")
         setNotes("")
-        toast.success("Remittance recorded")
+        toast.success(`Remittance of ₱${remitAmount.toFixed(2)} recorded — capital updated`)
       }
     } catch (error) {
       console.error("Error saving remittance:", error)
@@ -114,9 +137,20 @@ export function RemittanceList({ remittances, sessions, onUpdate }: RemittanceLi
         }
       }
 
+      // Add amount back to capital when remittance is deleted
+      if (capital && onCapitalUpdate) {
+        const restored = Number(capital.current_balance) + Number(deleteTarget.amount)
+        const { data: restoredCapital } = await supabase
+          .from("capital")
+          .update({ current_balance: restored, updated_at: new Date().toISOString() })
+          .eq("id", capital.id)
+          .select().single()
+        if (restoredCapital) onCapitalUpdate(restoredCapital)
+      }
+
       onUpdate(remittances.filter((r) => r.id !== deleteTarget.id))
       setDeleteTarget(null)
-      toast.success("Remittance removed")
+      toast.success("Remittance removed — capital restored")
     } catch (error) {
       console.error("Error deleting remittance:", error)
       toast.error("Failed to remove remittance")
