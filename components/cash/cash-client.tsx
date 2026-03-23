@@ -215,7 +215,9 @@ export function CashClient({
             <RemittanceList
               remittances={remittances}
               sessions={sessions}
+              capital={capital}
               onUpdate={setRemittances}
+              onCapitalUpdate={setCapital}
             />
           </TabsContent>
         </Tabs>
