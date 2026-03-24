@@ -142,6 +142,58 @@ export function POSClient({ initialCategories, initialProducts, initialAddons }:
       }
     }
 
+    // Deduct inventory based on product recipes
+    try {
+      // Get all product IDs and quantities from the cart
+      const productIds = cartItems.map((item) => item.product.id)
+
+      // Fetch recipes for all products in this order
+      const { data: recipes } = await supabase
+        .from("product_recipes")
+        .select("*, inventory_item:inventory_items(id, name, current_stock, unit)")
+        .in("product_id", productIds)
+
+      if (recipes && recipes.length > 0) {
+        // Calculate total deduction per inventory item
+        const deductions: Record<string, number> = {}
+        cartItems.forEach((cartItem) => {
+          const productRecipes = recipes.filter(
+            (r) => r.product_id === cartItem.product.id &&
+            (r.size_id === null || r.size_id === cartItem.size?.id)
+          )
+          productRecipes.forEach((recipe) => {
+            const key = recipe.inventory_item_id
+            deductions[key] = (deductions[key] || 0) + (Number(recipe.quantity_required) * cartItem.quantity)
+          })
+        })
+
+        // Apply deductions to inventory
+        await Promise.all(
+          Object.entries(deductions).map(async ([itemId, qty]) => {
+            const recipe = recipes.find((r) => r.inventory_item_id === itemId)
+            if (!recipe?.inventory_item) return
+            const newStock = Math.max(0, Number(recipe.inventory_item.current_stock) - qty)
+            await supabase
+              .from("inventory_items")
+              .update({ current_stock: newStock, updated_at: new Date().toISOString() })
+              .eq("id", itemId)
+
+            // Log the usage
+            await supabase.from("usage_logs").insert({
+              inventory_item_id: itemId,
+              quantity: qty,
+              source: "sale",
+              order_id: order.id,
+              notes: `Auto-deducted from sale #${order.order_number}`,
+            })
+          })
+        )
+      }
+    } catch (err) {
+      console.error("Error deducting inventory:", err)
+      // Don't block the sale if inventory deduction fails
+    }
+
     // Update today's cash session if exists - only count actual cash received
     const today = getPhilippineDate()
     const { data: session } = await supabase
