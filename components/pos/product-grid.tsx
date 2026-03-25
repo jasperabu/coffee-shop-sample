@@ -299,7 +299,7 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
             </div>
           </div>
         )}
-      </div>
+      </div>        
     </div>
-  )
-}
+  )     
+}         
