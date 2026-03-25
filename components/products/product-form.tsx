@@ -168,17 +168,27 @@ export function ProductForm({
         }
       }
 
-      // Save recipe (ingredients)
+      // Save recipe (ingredients) — resolve new size IDs by matching size_name
       await supabase.from("product_recipes").delete().eq("product_id", savedProduct.id)
       const validRecipe = recipe.filter((r) => r.inventory_item_id && r.quantity_required > 0)
       if (validRecipe.length > 0) {
+        const savedSizes = savedProduct.sizes || []
         await supabase.from("product_recipes").insert(
-          validRecipe.map((r) => ({
-            product_id: savedProduct.id,
-            inventory_item_id: r.inventory_item_id,
-            size_id: r.size_id || null,
-            quantity_required: r.quantity_required,
-          }))
+          validRecipe.map((r) => {
+            // If size_id starts with "new-", look up the real saved size ID by name
+            let resolvedSizeId = r.size_id || null
+            if (resolvedSizeId && resolvedSizeId.startsWith("new-")) {
+              const sizeName = resolvedSizeId.replace("new-", "")
+              const matchedSize = savedSizes.find((s: any) => s.size_name === sizeName)
+              resolvedSizeId = matchedSize?.id || null
+            }
+            return {
+              product_id: savedProduct.id,
+              inventory_item_id: r.inventory_item_id,
+              size_id: resolvedSizeId,
+              quantity_required: r.quantity_required,
+            }
+          })
         )
       }
 
@@ -314,76 +324,108 @@ export function ProductForm({
             )}
           </div>
 
-          {/* Recipe / Ingredients */}
-          <div className="space-y-3 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FlaskConical className="h-4 w-4 text-primary" />
-                <label className="text-sm font-medium">Recipe / Ingredients</label>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setRecipe([...recipe, { inventory_item_id: "", quantity_required: 1, size_id: null }])}
-              >
-                <Plus className="mr-1 h-3 w-3" /> Add Ingredient
-              </Button>
+          {/* Recipe / Ingredients — per size */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="h-4 w-4 text-primary" />
+              <label className="text-sm font-medium">Recipe / Ingredients</label>
             </div>
             <p className="text-xs text-muted-foreground">
-              When this product is sold, the quantities below will be automatically deducted from inventory.
+              Set ingredients per size. When sold, quantities are auto-deducted from inventory.
+              {sizes.length === 0 && " Add sizes above to set size-specific ingredients."}
             </p>
-            {recipe.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                No ingredients linked. Add ingredients to enable auto-deduction when sold.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {recipe.map((row, index) => {
-                  const selectedItem = inventory.find((i) => i.id === row.inventory_item_id)
-                  return (
-                    <div key={index} className="flex items-center gap-2 rounded-lg bg-muted/30 p-2">
-                      <Package className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <Select
-                        value={row.inventory_item_id}
-                        onValueChange={(v) => setRecipe(recipe.map((r, i) => i === index ? { ...r, inventory_item_id: v } : r))}
-                      >
-                        <SelectTrigger className="flex-1 h-8 text-sm">
-                          <SelectValue placeholder="Select ingredient" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {inventory.map((item) => (
-                            <SelectItem key={item.id} value={item.id}>
-                              {item.name} ({item.unit}) — stock: {Number(item.current_stock).toFixed(1)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          value={row.quantity_required}
-                          onChange={(e) => setRecipe(recipe.map((r, i) => i === index ? { ...r, quantity_required: parseFloat(e.target.value) || 0 } : r))}
-                          className="w-20 h-8 text-sm"
-                        />
-                        <span className="text-xs text-muted-foreground w-8">{selectedItem?.unit || "unit"}</span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive shrink-0"
-                        onClick={() => setRecipe(recipe.filter((_, i) => i !== index))}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+
+            {/* Group by: All Sizes (no size) + each individual size */}
+            {[
+              { label: "All Sizes (no size variant)", sizeId: null as string | null },
+              ...sizes.filter(s => s.size_name.trim()).map(s => ({
+                label: s.size_name,
+                sizeId: s.id ?? `new-${s.size_name}`,
+              }))
+            ].map((group) => {
+              const groupRows = recipe.filter((r) =>
+                group.sizeId === null ? r.size_id === null || r.size_id === undefined
+                : r.size_id === group.sizeId
+              )
+              return (
+                <div key={group.sizeId ?? "no-size"} className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                        {group.label}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{groupRows.length} ingredient{groupRows.length !== 1 ? "s" : ""}</span>
                     </div>
-                  )
-                })}
-              </div>
-            )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setRecipe([...recipe, {
+                        inventory_item_id: "",
+                        quantity_required: 1,
+                        size_id: group.sizeId,
+                      }])}
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> Add
+                    </Button>
+                  </div>
+
+                  {groupRows.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      No ingredients for this size. Click Add to link one.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {groupRows.map((row) => {
+                        const globalIndex = recipe.indexOf(row)
+                        const selectedItem = inventory.find((i) => i.id === row.inventory_item_id)
+                        return (
+                          <div key={globalIndex} className="flex items-center gap-2 rounded-md bg-background border px-2 py-1.5">
+                            <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <Select
+                              value={row.inventory_item_id}
+                              onValueChange={(v) => setRecipe(recipe.map((r, i) => i === globalIndex ? { ...r, inventory_item_id: v } : r))}
+                            >
+                              <SelectTrigger className="flex-1 h-7 text-xs border-0 bg-transparent p-0 focus:ring-0">
+                                <SelectValue placeholder="Select ingredient..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {inventory.map((item) => (
+                                  <SelectItem key={item.id} value={item.id}>
+                                    {item.name} ({item.unit}) — {Number(item.current_stock).toFixed(1)} in stock
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={row.quantity_required}
+                                onChange={(e) => setRecipe(recipe.map((r, i) => i === globalIndex ? { ...r, quantity_required: parseFloat(e.target.value) || 0 } : r))}
+                                className="w-16 h-7 text-xs text-center"
+                              />
+                              <span className="text-xs text-muted-foreground w-8 shrink-0">{selectedItem?.unit || "unit"}</span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:bg-destructive/10 shrink-0"
+                              onClick={() => setRecipe(recipe.filter((_, i) => i !== globalIndex))}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t">
