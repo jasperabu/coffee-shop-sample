@@ -168,25 +168,48 @@ export function ProductForm({
         }
       }
 
-      // Save recipe (ingredients) — resolve new size IDs by matching size_name
+      // Save recipe (ingredients) — resolve size IDs by matching size_name
+      // Sizes are always deleted + re-inserted on update, so old UUIDs are stale.
+      // We must resolve by name. The UI uses either a real UUID (existing size) or
+      // "new-<name>" (newly added size) — in both cases, match by size_name.
       await supabase.from("product_recipes").delete().eq("product_id", savedProduct.id)
       const validRecipe = recipe.filter((r) => r.inventory_item_id && r.quantity_required > 0)
       if (validRecipe.length > 0) {
         const savedSizes = savedProduct.sizes || []
+
+        // Build a name→id map from the freshly saved sizes
+        const sizeNameToId = new Map<string, string>(
+          savedSizes.map((s: any) => [s.size_name as string, s.id as string])
+        )
+
+        // Build an old-id→name map from the sizes state (before save) so we can
+        // look up the name for any recipe row that still holds a pre-save UUID.
+        const oldIdToName = new Map<string, string>(
+          sizes
+            .filter((s) => s.id && !s.id.startsWith("new-"))
+            .map((s) => [s.id as string, s.size_name])
+        )
+
         await supabase.from("product_recipes").insert(
           validRecipe.map((r) => {
-            let resolvedSizeId = r.size_id || null
-            // If size_id starts with "new-", it's a newly added size — match by name
-            if (resolvedSizeId && resolvedSizeId.startsWith("new-")) {
-              const sizeName = resolvedSizeId.replace("new-", "")
-              const matchedSize = savedSizes.find((s: any) => s.size_name === sizeName)
-              resolvedSizeId = matchedSize?.id || null
+            let resolvedSizeId: string | null = null
+
+            if (r.size_id) {
+              let sizeName: string | undefined
+
+              if (r.size_id.startsWith("new-")) {
+                // Newly added size — name is encoded in the temp id
+                sizeName = r.size_id.replace("new-", "")
+              } else {
+                // Existing size — look up the name from the pre-save sizes state
+                sizeName = oldIdToName.get(r.size_id) ?? sizes.find((s) => s.id === r.size_id)?.size_name
+              }
+
+              if (sizeName) {
+                resolvedSizeId = sizeNameToId.get(sizeName) ?? null
+              }
             }
-            // Validate that the size_id actually belongs to this product
-            if (resolvedSizeId) {
-              const sizeExists = savedSizes.find((s: any) => s.id === resolvedSizeId)
-              if (!sizeExists) resolvedSizeId = null
-            }
+
             return {
               product_id: savedProduct.id,
               inventory_item_id: r.inventory_item_id,
