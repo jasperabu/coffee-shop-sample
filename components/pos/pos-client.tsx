@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import type { Product, Category, ProductSize, Addon, CartItem, ProductRecipe } from "@/lib/types"
+import type { Product, Category, ProductSize, Addon, CartItem } from "@/lib/types"
 import { SidebarNav } from "@/components/sidebar-nav"
 import { ProductGrid } from "@/components/pos/product-grid"
 import { OrderCart } from "@/components/pos/order-cart"
@@ -14,15 +14,14 @@ interface POSClientProps {
   initialCategories: Category[]
   initialProducts: Product[]
   initialAddons: Addon[]
-  initialRecipes: ProductRecipe[]
 }
 
-export function POSClient({ initialCategories, initialProducts, initialAddons, initialRecipes }: POSClientProps) {
+export function POSClient({ initialCategories, initialProducts, initialAddons }: POSClientProps) {
   const router = useRouter()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [checkoutOpen, setCheckoutOpen] = useState(false)
 
-  const handleAddToCart = useCallback((product: Product, size: ProductSize | null, addons: Addon[], recipeOverrides?: Record<string, number>) => {
+  const handleAddToCart = useCallback((product: Product, size: ProductSize | null, addons: Addon[]) => {
     const basePrice = Number(product.base_price)
     const sizeAdjustment = size ? Number(size.price_adjustment) : 0
     const addonsTotal = addons.reduce((sum, addon) => sum + Number(addon.price), 0)
@@ -37,7 +36,6 @@ export function POSClient({ initialCategories, initialProducts, initialAddons, i
       unitPrice,
       totalPrice: unitPrice,
       notes: "",
-      recipeOverrides: recipeOverrides || {},
     }
 
     setCartItems((prev) => [...prev, newItem])
@@ -165,10 +163,7 @@ export function POSClient({ initialCategories, initialProducts, initialAddons, i
           )
           productRecipes.forEach((recipe) => {
             const key = recipe.inventory_item_id
-            // Use custom override quantity if cashier adjusted it, otherwise use default
-            const overrideQty = cartItem.recipeOverrides?.[recipe.inventory_item_id]
-            const qtyPerUnit = overrideQty !== undefined ? overrideQty : Number(recipe.quantity_required)
-            deductions[key] = (deductions[key] || 0) + (qtyPerUnit * cartItem.quantity)
+            deductions[key] = (deductions[key] || 0) + (Number(recipe.quantity_required) * cartItem.quantity)
           })
         })
 
@@ -263,7 +258,6 @@ export function POSClient({ initialCategories, initialProducts, initialAddons, i
             products={initialProducts}
             categories={initialCategories}
             addons={initialAddons}
-            recipes={initialRecipes}
             onAddToCart={handleAddToCart}
           />
         </div>

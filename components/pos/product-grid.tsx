@@ -1,20 +1,19 @@
 "use client"
 
 import { useState } from "react"
-import type { Product, Category, ProductSize, Addon, ProductRecipe } from "@/lib/types"
+import type { Product, Category, ProductSize, Addon } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { Coffee, Snowflake, IceCream, Leaf, Cookie, FlaskConical, Plus, Minus } from "lucide-react"
+import { Coffee, Snowflake, IceCream, Leaf, Cookie } from "lucide-react"
 
 interface ProductGridProps {
   products: Product[]
   categories: Category[]
   addons: Addon[]
-  recipes: ProductRecipe[]
-  onAddToCart: (product: Product, size: ProductSize | null, selectedAddons: Addon[], recipeOverrides?: Record<string, number>) => void
+  onAddToCart: (product: Product, size: ProductSize | null, selectedAddons: Addon[]) => void
 }
 
 const categoryIcons: Record<string, React.ElementType> = {
@@ -25,12 +24,11 @@ const categoryIcons: Record<string, React.ElementType> = {
   "Snacks": Cookie,
 }
 
-export function ProductGrid({ products, categories, addons, recipes, onAddToCart }: ProductGridProps) {
+export function ProductGrid({ products, categories, addons, onAddToCart }: ProductGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedSize, setSelectedSize] = useState<ProductSize | null>(null)
   const [selectedAddons, setSelectedAddons] = useState<Addon[]>([])
-  const [recipeOverrides, setRecipeOverrides] = useState<Record<string, number>>({})
 
   const filteredProducts = selectedCategory
     ? products.filter((p) => p.category_id === selectedCategory)
@@ -38,20 +36,12 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
 
   const handleProductClick = (product: Product) => {
     setSelectedProduct(product)
-    const defaultSize = product.sizes && product.sizes.length > 0 ? product.sizes[0] : null
-    if (defaultSize) {
-      setSelectedSize(defaultSize)
+    if (product.sizes && product.sizes.length > 0) {
+      setSelectedSize(product.sizes[0])
     } else {
       setSelectedSize(null)
     }
     setSelectedAddons([])
-    // Pre-fill recipe overrides with default quantities
-    const productRecipes = recipes.filter(
-      (r) => r.product_id === product.id && (r.size_id === null || r.size_id === defaultSize?.id)
-    )
-    const defaults: Record<string, number> = {}
-    productRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
-    setRecipeOverrides(defaults)
   }
 
   const handleAddonToggle = (addon: Addon) => {
@@ -64,11 +54,10 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
 
   const handleAddToCart = () => {
     if (selectedProduct) {
-      onAddToCart(selectedProduct, selectedSize, selectedAddons, recipeOverrides)
+      onAddToCart(selectedProduct, selectedSize, selectedAddons)
       setSelectedProduct(null)
       setSelectedSize(null)
       setSelectedAddons([])
-      setRecipeOverrides({})
     }
   }
 
@@ -173,15 +162,7 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
                         key={size.id}
                         variant={selectedSize?.id === size.id ? "default" : "outline"}
                         size="sm"
-                        onClick={() => {
-                          setSelectedSize(size)
-                          const sizeRecipes = recipes.filter(
-                            (r) => r.product_id === selectedProduct!.id && (r.size_id === null || r.size_id === size.id)
-                          )
-                          const defaults: Record<string, number> = {}
-                          sizeRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
-                          setRecipeOverrides(defaults)
-                        }}
+                        onClick={() => setSelectedSize(size)}
                       >
                         {size.size_name}
                         {Number(size.price_adjustment) > 0 && (
@@ -216,70 +197,6 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
                 </div>
               </div>
             )}
-
-            {/* Recipe / Ingredients — editable per order */}
-            {(() => {
-              const productRecipes = recipes.filter(
-                (r) => r.product_id === selectedProduct.id &&
-                (r.size_id === null || r.size_id === selectedSize?.id)
-              )
-              if (productRecipes.length === 0) return null
-              return (
-                <div className="mt-4">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <FlaskConical className="h-3.5 w-3.5 text-primary" />
-                    <h4 className="text-sm font-medium">Ingredients</h4>
-                    <span className="text-xs text-muted-foreground">(adjust for customization)</span>
-                  </div>
-                  <div className="space-y-2">
-                    {productRecipes.map((recipe) => {
-                      const item = recipe.inventory_item
-                      if (!item) return null
-                      const current = recipeOverrides[recipe.inventory_item_id] ?? Number(recipe.quantity_required)
-                      return (
-                        <div key={recipe.id} className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2">
-                          <span className="flex-1 text-sm font-medium truncate">{item.name}</span>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => setRecipeOverrides(prev => ({
-                                ...prev,
-                                [recipe.inventory_item_id]: Math.max(0, Number((current - 0.1).toFixed(2)))
-                              }))}
-                              className="h-6 w-6 rounded-full border border-border flex items-center justify-center hover:bg-muted text-muted-foreground"
-                            >
-                              <Minus className="h-3 w-3" />
-                            </button>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={current}
-                              onChange={(e) => setRecipeOverrides(prev => ({
-                                ...prev,
-                                [recipe.inventory_item_id]: parseFloat(e.target.value) || 0
-                              }))}
-                              className="w-14 h-6 text-center text-xs border border-border rounded bg-background"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setRecipeOverrides(prev => ({
-                                ...prev,
-                                [recipe.inventory_item_id]: Number((current + 0.1).toFixed(2))
-                              }))}
-                              className="h-6 w-6 rounded-full border border-border flex items-center justify-center hover:bg-muted text-muted-foreground"
-                            >
-                              <Plus className="h-3 w-3" />
-                            </button>
-                            <span className="text-xs text-muted-foreground w-6">{item.unit}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })()}
 
             {/* Price and Add Button */}
             <div className="mt-6 border-t border-border pt-4">
