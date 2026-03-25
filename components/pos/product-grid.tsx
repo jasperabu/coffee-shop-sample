@@ -1,19 +1,20 @@
 "use client"
 
 import { useState } from "react"
-import type { Product, Category, ProductSize, Addon } from "@/lib/types"
+import type { Product, Category, ProductSize, Addon, ProductRecipe } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { Coffee, Snowflake, IceCream, Leaf, Cookie } from "lucide-react"
+import { Coffee, Snowflake, IceCream, Leaf, Cookie, FlaskConical, Plus, Minus } from "lucide-react"
 
 interface ProductGridProps {
   products: Product[]
   categories: Category[]
   addons: Addon[]
-  onAddToCart: (product: Product, size: ProductSize | null, selectedAddons: Addon[]) => void
+  recipes: ProductRecipe[]
+  onAddToCart: (product: Product, size: ProductSize | null, selectedAddons: Addon[], recipeOverrides?: Record<string, number>) => void
 }
 
 const categoryIcons: Record<string, React.ElementType> = {
@@ -24,11 +25,12 @@ const categoryIcons: Record<string, React.ElementType> = {
   "Snacks": Cookie,
 }
 
-export function ProductGrid({ products, categories, addons, onAddToCart }: ProductGridProps) {
+export function ProductGrid({ products, categories, addons, recipes, onAddToCart }: ProductGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedSize, setSelectedSize] = useState<ProductSize | null>(null)
   const [selectedAddons, setSelectedAddons] = useState<Addon[]>([])
+  const [recipeOverrides, setRecipeOverrides] = useState<Record<string, number>>({})
 
   const filteredProducts = selectedCategory
     ? products.filter((p) => p.category_id === selectedCategory)
@@ -36,18 +38,21 @@ export function ProductGrid({ products, categories, addons, onAddToCart }: Produ
 
   const handleProductClick = (product: Product) => {
     setSelectedProduct(product)
-    if (product.sizes && product.sizes.length > 0) {
-      setSelectedSize(product.sizes[0])
+    const defaultSize = product.sizes && product.sizes.length > 0 ? product.sizes[0] : null
+    if (defaultSize) {
+      setSelectedSize(defaultSize)
     } else {
       setSelectedSize(null)
     }
     setSelectedAddons([])
-    // Pre-fill recipe overrides with default quantities
-    const productRecipes = recipes.filter(
-      (r) => r.product_id === product.id && (r.size_id === null || r.size_id === defaultSize?.id)
-    )
+    // Pre-fill recipe overrides — size-specific recipes override null-size ones
+    const nullRecipes = recipes.filter((r) => r.product_id === product.id && r.size_id === null)
+    const sizeRecipes = defaultSize
+      ? recipes.filter((r) => r.product_id === product.id && r.size_id === defaultSize.id)
+      : []
     const defaults: Record<string, number> = {}
-    productRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
+    nullRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
+    sizeRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
     setRecipeOverrides(defaults)
   }
 
@@ -61,10 +66,11 @@ export function ProductGrid({ products, categories, addons, onAddToCart }: Produ
 
   const handleAddToCart = () => {
     if (selectedProduct) {
-      onAddToCart(selectedProduct, selectedSize, selectedAddons)
+      onAddToCart(selectedProduct, selectedSize, selectedAddons, recipeOverrides)
       setSelectedProduct(null)
       setSelectedSize(null)
       setSelectedAddons([])
+      setRecipeOverrides({})
     }
   }
 
@@ -171,11 +177,12 @@ export function ProductGrid({ products, categories, addons, onAddToCart }: Produ
                         size="sm"
                         onClick={() => {
                           setSelectedSize(size)
-                          const sizeRecipes = recipes.filter(
-                            (r) => r.product_id === selectedProduct!.id && (r.size_id === null || r.size_id === size.id)
-                          )
+                          // null-size = base ingredients, size-specific overrides on top
+                          const baseRecipes = recipes.filter((r) => r.product_id === selectedProduct!.id && r.size_id === null)
+                          const specificRecipes = recipes.filter((r) => r.product_id === selectedProduct!.id && r.size_id === size.id)
                           const defaults: Record<string, number> = {}
-                          sizeRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
+                          baseRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
+                          specificRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
                           setRecipeOverrides(defaults)
                         }}
                       >
@@ -215,10 +222,16 @@ export function ProductGrid({ products, categories, addons, onAddToCart }: Produ
 
             {/* Recipe / Ingredients — editable per order */}
             {(() => {
-              const productRecipes = recipes.filter(
-                (r) => r.product_id === selectedProduct.id &&
-                (r.size_id === null || r.size_id === selectedSize?.id)
-              )
+              // Merge: base (null size) + size-specific, size-specific takes priority for display
+              const baseRecipes = recipes.filter((r) => r.product_id === selectedProduct.id && r.size_id === null)
+              const sizeSpecificRecipes = selectedSize
+                ? recipes.filter((r) => r.product_id === selectedProduct.id && r.size_id === selectedSize.id)
+                : []
+              // Build merged map: base first, then size-specific overrides
+              const recipeMap: Record<string, typeof baseRecipes[0]> = {}
+              baseRecipes.forEach((r) => { recipeMap[r.inventory_item_id] = r })
+              sizeSpecificRecipes.forEach((r) => { recipeMap[r.inventory_item_id] = r })
+              const productRecipes = Object.values(recipeMap)
               if (productRecipes.length === 0) return null
               return (
                 <div className="mt-4">
