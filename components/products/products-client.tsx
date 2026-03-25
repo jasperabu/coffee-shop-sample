@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import type { Product, Category, Addon, InventoryItem } from "@/lib/types"
-import { SidebarNav } from "@/components/sidebar-nav"
+import { SidebarNav, useSidebarWidth } from "@/components/sidebar-nav"
 import { ProductList } from "@/components/products/product-list"
 import { ProductForm } from "@/components/products/product-form"
 import { AddonList } from "@/components/products/addon-list"
@@ -23,6 +23,7 @@ export function ProductsClient({
   initialAddons,
   initialInventory,
 }: ProductsClientProps) {
+  const sidebarWidth = useSidebarWidth()
   const [products, setProducts] = useState(initialProducts)
   const [categories, setCategories] = useState(initialCategories)
   const [addons, setAddons] = useState(initialAddons)
@@ -33,7 +34,7 @@ export function ProductsClient({
     <div className="flex min-h-screen bg-background">
       <SidebarNav />
       
-      <main className="ml-64 flex-1 p-6">
+      <main className="flex-1 p-6 transition-all duration-300 ease-in-out" style={{ marginLeft: sidebarWidth }}>
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground">Products Management</h1>
           <p className="text-muted-foreground">Manage your menu items, categories, and add-ons</p>

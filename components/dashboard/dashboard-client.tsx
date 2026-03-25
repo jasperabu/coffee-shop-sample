@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import type { InventoryItem, Order } from "@/lib/types"
-import { SidebarNav } from "@/components/sidebar-nav"
+import { SidebarNav, useSidebarWidth } from "@/components/sidebar-nav"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -45,6 +45,7 @@ export function DashboardClient({
   dailyBreakdown,
 }: DashboardClientProps) {
   const avgOrderValue = monthOrders > 0 ? monthSales / monthOrders : 0
+  const sidebarWidth = useSidebarWidth()
   const [capitalBalance, setCapitalBalance] = useState(initialCapitalBalance)
   const [chartRange, setChartRange] = useState<7 | 14 | 30>(7)
 
@@ -61,7 +62,7 @@ export function DashboardClient({
   return (
     <div className="flex min-h-screen bg-background">
       <SidebarNav />
-      <main className="ml-64 flex-1 p-6">
+      <main className="flex-1 p-6 transition-all duration-300 ease-in-out" style={{ marginLeft: sidebarWidth }}>
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Overview of your coffee shop performance</p>

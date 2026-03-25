@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import type { InventoryItem, Purchase } from "@/lib/types"
-import { SidebarNav } from "@/components/sidebar-nav"
+import { SidebarNav, useSidebarWidth } from "@/components/sidebar-nav"
 import { InventoryList } from "@/components/inventory/inventory-list"
 import { PurchaseList } from "@/components/inventory/purchase-list"
 import { PeriodList } from "@/components/inventory/period-list"
@@ -42,6 +42,7 @@ export function InventoryClient({
   initialPeriods,
   initialCapital,
 }: InventoryClientProps) {
+  const sidebarWidth = useSidebarWidth()
   const [inventory, setInventory] = useState(initialInventory)
   const [purchases, setPurchases] = useState(initialPurchases)
   const [periods, setPeriods] = useState(initialPeriods)
@@ -60,7 +61,7 @@ export function InventoryClient({
     <div className="flex min-h-screen bg-background">
       <SidebarNav />
 
-      <main className="ml-64 flex-1 p-6">
+      <main className="flex-1 p-6 transition-all duration-300 ease-in-out" style={{ marginLeft: sidebarWidth }}>
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground">Inventory Management</h1>
           <p className="text-muted-foreground">Track stock levels, purchases, and usage</p>

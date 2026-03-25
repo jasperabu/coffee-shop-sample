@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import type { CashSession, Capital, Remittance } from "@/lib/types"
-import { SidebarNav } from "@/components/sidebar-nav"
+import { SidebarNav, useSidebarWidth } from "@/components/sidebar-nav"
 import { CashSessionPanel } from "@/components/cash/cash-session-panel"
 import { SessionHistory } from "@/components/cash/session-history"
 import { RemittanceList } from "@/components/cash/remittance-list"
@@ -26,6 +26,7 @@ export function CashClient({
   initialRemittances,
   todayCashSales,
 }: CashClientProps) {
+  const sidebarWidth = useSidebarWidth()
   const [sessions, setSessions] = useState(initialSessions)
   const [capital, setCapital] = useState(initialCapital)
   const [remittances, setRemittances] = useState(initialRemittances)
@@ -91,7 +92,7 @@ export function CashClient({
     <div className="flex min-h-screen bg-background">
       <SidebarNav />
 
-      <main className="ml-64 flex-1 p-6">
+      <main className="flex-1 p-6 transition-all duration-300 ease-in-out" style={{ marginLeft: sidebarWidth }}>
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground">Cash Management</h1>
           <p className="text-muted-foreground">Track daily cash flow, sessions, and remittances</p>

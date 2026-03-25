@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react"
 import type { Product, Category, ProductSize, Addon, CartItem, ProductRecipe } from "@/lib/types"
-import { SidebarNav } from "@/components/sidebar-nav"
+import { SidebarNav, useSidebarWidth } from "@/components/sidebar-nav"
 import { ProductGrid } from "@/components/pos/product-grid"
 import { OrderCart } from "@/components/pos/order-cart"
 import { CheckoutDialog } from "@/components/pos/checkout-dialog"
@@ -19,6 +19,7 @@ interface POSClientProps {
 
 export function POSClient({ initialCategories, initialProducts, initialAddons, initialRecipes }: POSClientProps) {
   const router = useRouter()
+  const sidebarWidth = useSidebarWidth()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [checkoutOpen, setCheckoutOpen] = useState(false)
 
@@ -252,7 +253,7 @@ export function POSClient({ initialCategories, initialProducts, initialAddons, i
     <div className="flex min-h-screen bg-background">
       <SidebarNav />
       
-      <main className="ml-64 flex flex-1">
+      <main className="flex flex-1 transition-all duration-300 ease-in-out" style={{ marginLeft: sidebarWidth }}>
         {/* Product Grid - Takes most of the space */}
         <div className="flex-1">
           <ProductGrid
