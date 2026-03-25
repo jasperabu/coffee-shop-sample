@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { Product, Category, InventoryItem, ProductSize } from "@/lib/types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -58,7 +58,7 @@ export function ProductForm({
   const [loadingRecipe, setLoadingRecipe] = useState(false)
 
   // Load existing recipe on mount
-  useState(() => {
+  useEffect(() => {
     if (product?.id) {
       const supabaseClient = createClient()
       supabaseClient
@@ -76,7 +76,7 @@ export function ProductForm({
           }
         })
     }
-  })
+  }, [product?.id])
 
   const [sizes, setSizes] = useState<SizeInput[]>(
     product?.sizes?.map((s) => ({
@@ -175,12 +175,17 @@ export function ProductForm({
         const savedSizes = savedProduct.sizes || []
         await supabase.from("product_recipes").insert(
           validRecipe.map((r) => {
-            // If size_id starts with "new-", look up the real saved size ID by name
             let resolvedSizeId = r.size_id || null
+            // If size_id starts with "new-", it's a newly added size — match by name
             if (resolvedSizeId && resolvedSizeId.startsWith("new-")) {
               const sizeName = resolvedSizeId.replace("new-", "")
               const matchedSize = savedSizes.find((s: any) => s.size_name === sizeName)
               resolvedSizeId = matchedSize?.id || null
+            }
+            // Validate that the size_id actually belongs to this product
+            if (resolvedSizeId) {
+              const sizeExists = savedSizes.find((s: any) => s.id === resolvedSizeId)
+              if (!sizeExists) resolvedSizeId = null
             }
             return {
               product_id: savedProduct.id,

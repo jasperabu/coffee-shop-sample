@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import type { Product, Category, ProductSize, Addon, CartItem } from "@/lib/types"
+import type { Product, Category, ProductSize, Addon, CartItem, ProductRecipe } from "@/lib/types"
 import { SidebarNav } from "@/components/sidebar-nav"
 import { ProductGrid } from "@/components/pos/product-grid"
 import { OrderCart } from "@/components/pos/order-cart"
@@ -14,9 +14,10 @@ interface POSClientProps {
   initialCategories: Category[]
   initialProducts: Product[]
   initialAddons: Addon[]
+  initialRecipes: ProductRecipe[]
 }
 
-export function POSClient({ initialCategories, initialProducts, initialAddons }: POSClientProps) {
+export function POSClient({ initialCategories, initialProducts, initialAddons, initialRecipes }: POSClientProps) {
   const router = useRouter()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [checkoutOpen, setCheckoutOpen] = useState(false)
@@ -258,6 +259,7 @@ export function POSClient({ initialCategories, initialProducts, initialAddons }:
             products={initialProducts}
             categories={initialCategories}
             addons={initialAddons}
+            recipes={initialRecipes}
             onAddToCart={handleAddToCart}
           />
         </div>

@@ -45,14 +45,14 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
       setSelectedSize(null)
     }
     setSelectedAddons([])
-    // Pre-fill recipe overrides — size-specific recipes override null-size ones
-    const nullRecipes = recipes.filter((r) => r.product_id === product.id && r.size_id === null)
+    // Pre-fill recipe overrides — use size-specific if available, else null-size
     const sizeRecipes = defaultSize
       ? recipes.filter((r) => r.product_id === product.id && r.size_id === defaultSize.id)
       : []
+    const nullRecipes = recipes.filter((r) => r.product_id === product.id && r.size_id === null)
+    const activeRecipes = sizeRecipes.length > 0 ? sizeRecipes : nullRecipes
     const defaults: Record<string, number> = {}
-    nullRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
-    sizeRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
+    activeRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
     setRecipeOverrides(defaults)
   }
 
@@ -177,12 +177,12 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
                         size="sm"
                         onClick={() => {
                           setSelectedSize(size)
-                          // null-size = base ingredients, size-specific overrides on top
-                          const baseRecipes = recipes.filter((r) => r.product_id === selectedProduct!.id && r.size_id === null)
+                          // Use size-specific recipes if available, else fall back to null-size
                           const specificRecipes = recipes.filter((r) => r.product_id === selectedProduct!.id && r.size_id === size.id)
+                          const baseRecipes = recipes.filter((r) => r.product_id === selectedProduct!.id && r.size_id === null)
+                          const activeRecipes = specificRecipes.length > 0 ? specificRecipes : baseRecipes
                           const defaults: Record<string, number> = {}
-                          baseRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
-                          specificRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
+                          activeRecipes.forEach((r) => { defaults[r.inventory_item_id] = Number(r.quantity_required) })
                           setRecipeOverrides(defaults)
                         }}
                       >
@@ -222,16 +222,13 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
 
             {/* Recipe / Ingredients — editable per order */}
             {(() => {
-              // Merge: base (null size) + size-specific, size-specific takes priority for display
-              const baseRecipes = recipes.filter((r) => r.product_id === selectedProduct.id && r.size_id === null)
+              // Show size-specific ingredients if they exist, otherwise fall back to "All Sizes" ones
               const sizeSpecificRecipes = selectedSize
                 ? recipes.filter((r) => r.product_id === selectedProduct.id && r.size_id === selectedSize.id)
                 : []
-              // Build merged map: base first, then size-specific overrides
-              const recipeMap: Record<string, typeof baseRecipes[0]> = {}
-              baseRecipes.forEach((r) => { recipeMap[r.inventory_item_id] = r })
-              sizeSpecificRecipes.forEach((r) => { recipeMap[r.inventory_item_id] = r })
-              const productRecipes = Object.values(recipeMap)
+              const nullSizeRecipes = recipes.filter((r) => r.product_id === selectedProduct.id && r.size_id === null)
+              // Use size-specific if available, otherwise use null-size (All Sizes)
+              const productRecipes = sizeSpecificRecipes.length > 0 ? sizeSpecificRecipes : nullSizeRecipes
               if (productRecipes.length === 0) return null
               return (
                 <div className="mt-4">
