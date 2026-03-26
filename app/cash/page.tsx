@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
-import { CashClient } from "@/components/cash/cash-client"
 import { getPhilippineDate } from "@/lib/utils"
+import { CashClientLoader } from "@/components/cash/cash-client-loader"
 
 export default async function CashPage() {
   const supabase = await createClient()
@@ -40,7 +40,7 @@ export default async function CashPage() {
   }
 
   return (
-    <CashClient
+    <CashClientLoader
       initialSessions={sessions}
       initialCapital={capitalResult.data || null}
       initialRemittances={remittancesResult.data || []}

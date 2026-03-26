@@ -13,7 +13,7 @@ import { getPhilippineDate } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 
-interface CashClientProps {
+export interface CashClientProps {
   initialSessions: CashSession[]
   initialCapital: Capital | null
   initialRemittances: Remittance[]

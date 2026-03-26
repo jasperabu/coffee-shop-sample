@@ -122,19 +122,20 @@ export function ProductForm({
       let savedProduct: Product
 
       if (product) {
+        // Delete existing sizes BEFORE updating, so the select below doesn't
+        // return stale sizes that would then be duplicated by the re-insert.
+        await supabase.from("product_sizes").delete().eq("product_id", product.id)
+
         // Update existing product
         const { data, error } = await supabase
           .from("products")
           .update(productData)
           .eq("id", product.id)
-          .select(`*, category:categories(*), sizes:product_sizes(*)`)
+          .select(`*, category:categories(*)`)
           .single()
 
         if (error) throw error
-        savedProduct = data
-
-        // Delete existing sizes
-        await supabase.from("product_sizes").delete().eq("product_id", product.id)
+        savedProduct = { ...data, sizes: [] }
       } else {
         // Create new product
         const { data, error } = await supabase
@@ -148,24 +149,25 @@ export function ProductForm({
       }
 
       // Insert sizes
-      if (sizes.length > 0) {
-        const sizesToInsert = sizes
-          .filter((s) => s.size_name.trim())
-          .map((s, index) => ({
-            product_id: savedProduct.id,
-            size_name: s.size_name,
-            price_adjustment: s.price_adjustment,
-            display_order: index,
-          }))
+      const sizesToInsert = sizes
+        .filter((s) => s.size_name.trim())
+        .map((s, index) => ({
+          product_id: savedProduct.id,
+          size_name: s.size_name,
+          price_adjustment: s.price_adjustment,
+          display_order: index,
+        }))
 
-        if (sizesToInsert.length > 0) {
-          const { data: sizesData } = await supabase
-            .from("product_sizes")
-            .insert(sizesToInsert)
-            .select()
+      if (sizesToInsert.length > 0) {
+        const { data: sizesData, error: sizesError } = await supabase
+          .from("product_sizes")
+          .insert(sizesToInsert)
+          .select()
 
-          savedProduct.sizes = sizesData || []
-        }
+        if (sizesError) throw sizesError
+        savedProduct.sizes = sizesData || []
+      } else {
+        savedProduct.sizes = []
       }
 
       // Save recipe (ingredients) — resolve size IDs by matching size_name
@@ -198,8 +200,8 @@ export function ProductForm({
               let sizeName: string | undefined
 
               if (r.size_id.startsWith("new-")) {
-                // Newly added size — name is encoded in the temp id
-                sizeName = r.size_id.replace("new-", "")
+                // Newly added size — format is "new-{index}-{name}"
+                sizeName = r.size_id.replace(/^new-\d+-/, "")
               } else {
                 // Existing size — look up the name from the pre-save sizes state
                 sizeName = oldIdToName.get(r.size_id) ?? sizes.find((s) => s.id === r.size_id)?.size_name
@@ -366,9 +368,9 @@ export function ProductForm({
             {/* Group by: All Sizes (no size) + each individual size */}
             {[
               { label: "All Sizes (no size variant)", sizeId: null as string | null },
-              ...sizes.filter(s => s.size_name.trim()).map(s => ({
+              ...sizes.filter(s => s.size_name.trim()).map((s, i) => ({
                 label: s.size_name,
-                sizeId: s.id ?? `new-${s.size_name}`,
+                sizeId: s.id ?? `new-${i}-${s.size_name}`,
               }))
             ].map((group) => {
               const groupRows = recipe.filter((r) =>

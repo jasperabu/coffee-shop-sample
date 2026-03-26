@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { ProductsClient } from "@/components/products/products-client"
+import { ProductsClientLoader } from "@/components/products/products-client-loader"
 
 export default async function ProductsPage() {
   const supabase = await createClient()
@@ -16,7 +16,7 @@ export default async function ProductsPage() {
   ])
 
   return (
-    <ProductsClient
+    <ProductsClientLoader
       initialCategories={categoriesResult.data || []}
       initialProducts={productsResult.data || []}
       initialAddons={addonsResult.data || []}

@@ -10,7 +10,7 @@ import { CategoryList } from "@/components/products/category-list"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Coffee, Tags, Layers } from "lucide-react"
 
-interface ProductsClientProps {
+export interface ProductsClientProps {
   initialCategories: Category[]
   initialProducts: Product[]
   initialAddons: Addon[]

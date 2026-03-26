@@ -29,7 +29,7 @@ interface Capital {
   updated_at: string
 }
 
-interface InventoryClientProps {
+export interface InventoryClientProps {
   initialInventory: InventoryItem[]
   initialPurchases: Purchase[]
   initialPeriods: InventoryPeriod[]

@@ -245,3 +245,25 @@ CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_item ON usage_logs(inventory_item_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_period ON purchases(period_id);
 CREATE INDEX IF NOT EXISTS idx_cash_sessions_date ON cash_sessions(date);
+
+-- ============================================================
+-- PATCH: Fix duplicate product_sizes
+-- Remove existing duplicates (keep the one with lowest created_at)
+-- then add a unique constraint to prevent recurrence.
+-- ============================================================
+
+-- Step 1: Delete duplicate rows, keeping the earliest per (product_id, size_name)
+DELETE FROM product_sizes
+WHERE id NOT IN (
+  SELECT DISTINCT ON (product_id, size_name) id
+  FROM product_sizes
+  ORDER BY product_id, size_name, created_at ASC
+);
+
+-- Step 2: Add unique constraint so this can never happen again
+ALTER TABLE product_sizes
+  DROP CONSTRAINT IF EXISTS product_sizes_product_id_size_name_key;
+
+ALTER TABLE product_sizes
+  ADD CONSTRAINT product_sizes_product_id_size_name_key
+  UNIQUE (product_id, size_name);

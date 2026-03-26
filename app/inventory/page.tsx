@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { InventoryClient } from "@/components/inventory/inventory-client"
+import { InventoryClientLoader } from "@/components/inventory/inventory-client-loader"
 
 export default async function InventoryPage() {
   const supabase = await createClient()
@@ -15,7 +15,7 @@ export default async function InventoryPage() {
   ])
 
   return (
-    <InventoryClient
+    <InventoryClientLoader
       initialInventory={inventoryResult.data || []}
       initialPurchases={purchasesResult.data || []}
       initialPeriods={periodsResult.data || []}
