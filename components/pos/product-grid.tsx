@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { Coffee, Milk,Leaf, Cookie, FlaskConical, Plus, Minus,CupSoda } from "lucide-react"
+import { Coffee, Milk,Leaf, FlaskConical, Plus, Minus,CupSoda } from "lucide-react"
 
 interface ProductGridProps {
   products: Product[]
