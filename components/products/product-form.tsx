@@ -122,10 +122,6 @@ export function ProductForm({
       let savedProduct: Product
 
       if (product) {
-        // Delete existing sizes BEFORE updating, so the select below doesn't
-        // return stale sizes that would then be duplicated by the re-insert.
-        await supabase.from("product_sizes").delete().eq("product_id", product.id)
-
         // Update existing product
         const { data, error } = await supabase
           .from("products")
@@ -148,33 +144,85 @@ export function ProductForm({
         savedProduct = data
       }
 
-      // Insert sizes
-      const sizesToInsert = sizes
-        .filter((s) => s.size_name.trim())
-        .map((s, index) => ({
+      // ── Sizes: smart upsert that respects the order_items FK ──────────────
+      // Deleting a product_size that is referenced by order_items causes a
+      // 409 FK violation. Strategy:
+      //   1. UPDATE sizes that already have a DB id (edit in place)
+      //   2. INSERT brand-new sizes (no id yet)
+      //   3. DELETE only sizes that were removed AND are NOT referenced by any order
+      const incomingSizes = sizes.filter((s) => s.size_name.trim())
+      const existingIds = incomingSizes.map((s) => s.id).filter(Boolean) as string[]
+
+      // Find sizes that were removed from the form
+      const { data: currentDbSizes } = await supabase
+        .from("product_sizes")
+        .select("id")
+        .eq("product_id", savedProduct.id)
+      const removedIds = (currentDbSizes || [])
+        .map((s: any) => s.id as string)
+        .filter((id: string) => !existingIds.includes(id))
+
+      // Delete removed sizes one-by-one, skipping any still referenced by order_items.
+      // We attempt each delete individually: if it returns a FK violation (23503),
+      // the size is still used in an order — we silently keep it rather than crash.
+      // Querying order_items directly can fail due to RLS, so we rely on the DB
+      // error itself as the authoritative signal.
+      for (const removedId of removedIds) {
+        const { error: delError } = await supabase
+          .from("product_sizes")
+          .delete()
+          .eq("id", removedId)
+        if (delError && delError.code !== "23503") {
+          // 23503 = foreign_key_violation — size is still in use, skip it
+          throw delError
+        }
+      }
+
+      // Update existing sizes in place
+      const sizesToUpdate = incomingSizes.filter((s) => s.id)
+      for (const [index, s] of sizesToUpdate.entries()) {
+        const { error: updateErr } = await supabase
+          .from("product_sizes")
+          .update({ size_name: s.size_name, price_adjustment: s.price_adjustment, display_order: index })
+          .eq("id", s.id!)
+        if (updateErr) throw updateErr
+      }
+
+      // Insert brand-new sizes
+      const sizesToInsert = incomingSizes
+        .filter((s) => !s.id)
+        .map((s, i) => ({
           product_id: savedProduct.id,
           size_name: s.size_name,
           price_adjustment: s.price_adjustment,
-          display_order: index,
+          display_order: sizesToUpdate.length + i,
         }))
 
+      let allSavedSizes: any[] = []
       if (sizesToInsert.length > 0) {
-        const { data: sizesData, error: sizesError } = await supabase
+        const { data: insertedSizes, error: sizesError } = await supabase
           .from("product_sizes")
           .insert(sizesToInsert)
           .select()
-
         if (sizesError) throw sizesError
-        savedProduct.sizes = sizesData || []
-      } else {
-        savedProduct.sizes = []
+        allSavedSizes = insertedSizes || []
       }
+
+      // Re-fetch all sizes for this product so savedProduct.sizes is complete
+      const { data: freshSizes, error: freshSizesError } = await supabase
+        .from("product_sizes")
+        .select("*")
+        .eq("product_id", savedProduct.id)
+        .order("display_order")
+      if (freshSizesError) throw freshSizesError
+      savedProduct.sizes = freshSizes || []
 
       // Save recipe (ingredients) — resolve size IDs by matching size_name
       // Sizes are always deleted + re-inserted on update, so old UUIDs are stale.
       // We must resolve by name. The UI uses either a real UUID (existing size) or
       // "new-<name>" (newly added size) — in both cases, match by size_name.
-      await supabase.from("product_recipes").delete().eq("product_id", savedProduct.id)
+      const { error: deleteRecipesError } = await supabase.from("product_recipes").delete().eq("product_id", savedProduct.id)
+      if (deleteRecipesError) throw deleteRecipesError
       const validRecipe = recipe.filter((r) => r.inventory_item_id && r.quantity_required > 0)
       if (validRecipe.length > 0) {
         const savedSizes = savedProduct.sizes || []
@@ -192,7 +240,7 @@ export function ProductForm({
             .map((s) => [s.id as string, s.size_name])
         )
 
-        await supabase.from("product_recipes").insert(
+        const { error: recipeError } = await supabase.from("product_recipes").insert(
           validRecipe.map((r) => {
             let resolvedSizeId: string | null = null
 
@@ -220,12 +268,33 @@ export function ProductForm({
             }
           })
         )
+        if (recipeError) throw recipeError
       }
 
       toast.success(product ? "Product updated!" : "Product created!")
       onSave(savedProduct)
-    } catch (error) {
-      console.error("Error saving product:", error)
+    } catch (error: unknown) {
+      // Supabase PostgrestError has non-enumerable properties — JSON.stringify misses them.
+      // Access each field explicitly so we always get the real message.
+      const err = error as Record<string, unknown> | null
+      const message = String(
+        (err && (err["message"] ?? err["msg"] ?? err["error_description"] ?? err["error"])) ||
+        (error instanceof Error ? error.message : null) ||
+        "An unexpected error occurred."
+      )
+      const detail = err?.["details"] ? ` — ${err["details"]}` : ""
+      const hint = err?.["hint"] ? ` Hint: ${err["hint"]}` : ""
+      const code = err?.["code"] ? ` [${err["code"]}]` : ""
+      // Log all known fields explicitly so the console shows something useful
+      console.error("Error saving product:", {
+        message: err?.["message"],
+        details: err?.["details"],
+        hint: err?.["hint"],
+        code: err?.["code"],
+        raw: error,
+        stringified: (() => { try { return JSON.stringify(error, Object.getOwnPropertyNames(error as object)) } catch { return String(error) } })(),
+      })
+      toast.error(`Failed to save product: ${message}${detail}${hint}${code}`)
     } finally {
       setIsLoading(false)
     }
