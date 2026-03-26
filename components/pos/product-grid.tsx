@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { Coffee, Snowflake, IceCream, Leaf, Cookie, FlaskConical, Plus, Minus } from "lucide-react"
+import { Coffee, Milk,Leaf, Cookie, FlaskConical, Plus, Minus,CupSoda } from "lucide-react"
 
 interface ProductGridProps {
   products: Product[]
@@ -18,11 +18,10 @@ interface ProductGridProps {
 }
 
 const categoryIcons: Record<string, React.ElementType> = {
-  "Hot Coffee": Coffee,
-  "Iced Coffee": Snowflake,
-  "Frappe": IceCream,
+  "Iced Coffee": Coffee,
+  "Soda Fizz": CupSoda,
   "Non-Coffee": Leaf,
-  "Snacks": Cookie,
+  "Locale Product": Milk,
 }
 
 export function ProductGrid({ products, categories, addons, recipes, onAddToCart }: ProductGridProps) {
