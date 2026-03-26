@@ -105,7 +105,7 @@ export function SidebarNav() {
             {!isCollapsed && (
               <div className="flex flex-col">
                 <span className="text-lg font-bold tracking-tight">Da Bes</span>
-                <span className="text-xs text-sidebar-foreground/70">Coffee Shop POS</span>
+                <span className="text-xs text-sidebar-foreground/70">Coffee Shop</span>
               </div>
             )}
           </div>
@@ -158,7 +158,7 @@ export function SidebarNav() {
                 <Package className="h-5 w-5 text-sidebar-primary" />
                 <div className="flex flex-col">
                   <span className="text-xs font-medium">POS System</span>
-                  <span className="text-xs text-sidebar-foreground/60">v1.0.0</span>
+                  <span className="text-xs text-sidebar-foreground/60">v2.0.0</span>
                 </div>
               </div>
             )}
