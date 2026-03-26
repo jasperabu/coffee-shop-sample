@@ -250,7 +250,7 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
                               type="button"
                               onClick={() => setRecipeOverrides(prev => ({
                                 ...prev,
-                                [recipe.inventory_item_id]: Math.max(0, Number((current - 0.1).toFixed(2)))
+                                [recipe.inventory_item_id]: Math.max(0, current - 1)
                               }))}
                               className="h-6 w-6 rounded-full border border-border flex items-center justify-center hover:bg-muted text-muted-foreground"
                             >
@@ -271,7 +271,7 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
                               type="button"
                               onClick={() => setRecipeOverrides(prev => ({
                                 ...prev,
-                                [recipe.inventory_item_id]: Number((current + 0.1).toFixed(2))
+                                [recipe.inventory_item_id]: current + 1
                               }))}
                               className="h-6 w-6 rounded-full border border-border flex items-center justify-center hover:bg-muted text-muted-foreground"
                             >
@@ -299,7 +299,7 @@ export function ProductGrid({ products, categories, addons, recipes, onAddToCart
             </div>
           </div>
         )}
-      </div>        
+      </div>
     </div>
-  )     
-}         
+  )
+}
