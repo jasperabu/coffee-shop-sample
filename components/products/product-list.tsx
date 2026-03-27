@@ -13,7 +13,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useState } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
 import {
   AlertDialog,
@@ -45,6 +53,11 @@ export function ProductList({
   onToggleAvailability,
 }: ProductListProps) {
   const supabase = createClient()
+  const [selectedCategory, setSelectedCategory] = useState<string>("all")
+
+  const filteredProducts = selectedCategory === "all"
+    ? products
+    : products.filter((p) => p.category_id === selectedCategory)
 
   const handleToggle = async (product: Product) => {
     const newValue = !product.is_available
@@ -73,12 +86,27 @@ export function ProductList({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
         <CardTitle>Products</CardTitle>
-        <Button onClick={onAdd}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Product
-        </Button>
+        <div className="flex items-center gap-3 ml-auto">
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button onClick={onAdd}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Product
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <Table>
@@ -93,7 +121,7 @@ export function ProductList({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {products.map((product) => (
+            {filteredProducts.map((product) => (
               <TableRow key={product.id}>
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell>
@@ -149,10 +177,10 @@ export function ProductList({
                 </TableCell>
               </TableRow>
             ))}
-            {products.length === 0 && (
+            {filteredProducts.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                  No products found. Add your first product to get started.
+                  {selectedCategory === "all" ? "No products found. Add your first product to get started." : "No products in this category."}
                 </TableCell>
               </TableRow>
             )}
