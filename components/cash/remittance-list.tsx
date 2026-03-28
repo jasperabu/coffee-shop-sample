@@ -51,9 +51,10 @@ interface RemittanceListProps {
   capital?: Capital | null
   onUpdate: (remittances: Remittance[]) => void
   onCapitalUpdate?: (capital: Capital) => void
+  onRemittanceAdded?: (amount: number) => void
 }
 
-export function RemittanceList({ remittances, sessions, capital, onUpdate, onCapitalUpdate }: RemittanceListProps) {
+export function RemittanceList({ remittances, sessions, capital, onUpdate, onCapitalUpdate, onRemittanceAdded }: RemittanceListProps) {
   const supabase = createClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -104,11 +105,12 @@ export function RemittanceList({ remittances, sessions, capital, onUpdate, onCap
         }
 
         onUpdate([data, ...remittances])
+        if (onRemittanceAdded) onRemittanceAdded(remitAmount)
         setDialogOpen(false)
         setAmount("")
         setRecipient("")
         setNotes("")
-        toast.success(`Remittance of ₱${remitAmount.toFixed(2)} recorded — capital updated`)
+        toast.success(`Remittance of ₱${remitAmount.toFixed(2)} recorded — added to Youth Fund`)
       }
     } catch (error) {
       console.error("Error saving remittance:", error)

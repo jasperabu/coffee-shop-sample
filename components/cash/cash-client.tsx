@@ -8,7 +8,8 @@ import { SessionHistory } from "@/components/cash/session-history"
 import { RemittanceList } from "@/components/cash/remittance-list"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
-import { DollarSign, History, Send, Wallet } from "lucide-react"
+import { DollarSign, History, Send, Wallet, Heart } from "lucide-react"
+import { YouthFundPanel, type YouthFundTransaction } from "@/components/cash/youth-fund-panel"
 import { getPhilippineDate } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -18,6 +19,8 @@ export interface CashClientProps {
   initialCapital: Capital | null
   initialRemittances: Remittance[]
   todayCashSales: number
+  initialYouthFundBalance?: number
+  initialYouthFundTransactions?: YouthFundTransaction[]
 }
 
 export function CashClient({
@@ -25,6 +28,8 @@ export function CashClient({
   initialCapital,
   initialRemittances,
   todayCashSales,
+  initialYouthFundBalance = 0,
+  initialYouthFundTransactions = [],
 }: CashClientProps) {
   const sidebarWidth = useSidebarWidth()
   const [sessions, setSessions] = useState(initialSessions)
@@ -33,6 +38,9 @@ export function CashClient({
   const [editingCapital, setEditingCapital] = useState(false)
   const [capitalInput, setCapitalInput] = useState("")
   const [isSavingCapital, setIsSavingCapital] = useState(false)
+
+  const [youthFundBalance, setYouthFundBalance] = useState(initialYouthFundBalance)
+  const [youthFundTransactions, setYouthFundTransactions] = useState<YouthFundTransaction[]>(initialYouthFundTransactions)
 
   const today = getPhilippineDate()
   const todaySessions = sessions.filter((s) => s.date === today)
@@ -88,6 +96,24 @@ export function CashClient({
     if (data) setCapital(data)
   }
 
+  const addToYouthFund = async (amount: number, description: string) => {
+    if (amount <= 0) return
+    const supabase = createClient()
+    try {
+      const { data } = await supabase
+        .from("youth_fund_transactions")
+        .insert({ type: "deposit", amount, description })
+        .select()
+        .single()
+      const newBalance = youthFundBalance + amount
+      await supabase
+        .from("youth_fund")
+        .upsert({ id: 1, balance: newBalance, updated_at: new Date().toISOString() })
+      setYouthFundBalance(newBalance)
+      if (data) setYouthFundTransactions((prev) => [data, ...prev])
+    } catch { /* non-critical */ }
+  }
+
   return (
     <div className="flex min-h-screen bg-background">
       <SidebarNav />
@@ -98,7 +124,7 @@ export function CashClient({
           <p className="text-muted-foreground">Track daily cash flow, sessions, and remittances</p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4 mb-6">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 mb-6">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -138,6 +164,20 @@ export function CashClient({
                 <div>
                   <p className="text-sm text-muted-foreground">Total Remitted</p>
                   <p className="text-2xl font-bold">₱{totalRemitted.toFixed(2)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/40">
+                  <Heart className="h-6 w-6 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Youth Fund</p>
+                  <p className="text-2xl font-bold text-green-700 dark:text-green-400">₱{youthFundBalance.toFixed(2)}</p>
                 </div>
               </div>
             </CardContent>
@@ -191,6 +231,10 @@ export function CashClient({
               <Send className="h-4 w-4" />
               Remittances
             </TabsTrigger>
+            <TabsTrigger value="youth-fund" className="gap-2">
+              <Heart className="h-4 w-4" />
+              Youth Fund
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="session">
@@ -219,6 +263,16 @@ export function CashClient({
               capital={capital}
               onUpdate={setRemittances}
               onCapitalUpdate={setCapital}
+              onRemittanceAdded={(amount) => addToYouthFund(amount, "From remittance")}
+            />
+          </TabsContent>
+
+          <TabsContent value="youth-fund">
+            <YouthFundPanel
+              balance={youthFundBalance}
+              transactions={youthFundTransactions}
+              onBalanceChange={setYouthFundBalance}
+              onTransactionsChange={setYouthFundTransactions}
             />
           </TabsContent>
         </Tabs>
