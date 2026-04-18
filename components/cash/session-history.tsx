@@ -214,11 +214,27 @@ export function SessionHistory({ sessions, onDelete }: SessionHistoryProps) {
                     </TableRow>
                   ))}
                   <TableRow className="font-bold bg-muted/50">
-                    <TableCell colSpan={2}>Grand Total</TableCell>
+                    <TableCell colSpan={2}>Closing Cash (Counted)</TableCell>
                     <TableCell className="text-right">
                       ₱{denominations.reduce((sum, d) => sum + Number(d.total), 0).toFixed(2)}
                     </TableCell>
                   </TableRow>
+                  {selectedSession && selectedSession.expected_cash !== null && (
+                    <TableRow className="font-medium bg-primary/5">
+                      <TableCell colSpan={2}>Expected Cash</TableCell>
+                      <TableCell className="text-right">
+                        ₱{Number(selectedSession.expected_cash).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {selectedSession && selectedSession.difference !== null && (
+                    <TableRow className={Number(selectedSession.difference) >= 0 ? "bg-green-50/50" : "bg-red-50/50"}>
+                      <TableCell colSpan={2} className="font-bold">Difference</TableCell>
+                      <TableCell className={`text-right font-bold ${Number(selectedSession.difference) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {Number(selectedSession.difference) > 0 ? "+" : ""}₱{Number(selectedSession.difference).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
