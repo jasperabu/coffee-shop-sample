@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import type { Product, Category, ProductSize, Addon, CartItem, ProductRecipe } from "@/lib/types"
+import type { Product, Category, ProductSize, Addon, CartItem, ProductRecipe, CashSession } from "@/lib/types"
 import { SidebarNav, useSidebarWidth } from "@/components/sidebar-nav"
 import { ProductGrid } from "@/components/pos/product-grid"
 import { OrderCart } from "@/components/pos/order-cart"
@@ -9,15 +9,17 @@ import { CheckoutDialog } from "@/components/pos/checkout-dialog"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { getPhilippineDate } from "@/lib/utils"
+import { toast } from "sonner"
 
 interface POSClientProps {
   initialCategories: Category[]
   initialProducts: Product[]
   initialAddons: Addon[]
   initialRecipes: ProductRecipe[]
+  activeSession: CashSession | null
 }
 
-export function POSClient({ initialCategories, initialProducts, initialAddons, initialRecipes }: POSClientProps) {
+export function POSClient({ initialCategories, initialProducts, initialAddons, initialRecipes, activeSession }: POSClientProps) {
   const router = useRouter()
   const sidebarWidth = useSidebarWidth()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -63,8 +65,12 @@ export function POSClient({ initialCategories, initialProducts, initialAddons, i
   }, [])
 
   const handleCheckout = useCallback(() => {
+    if (!activeSession) {
+      toast.error("Cannot start sale: No active cash session. Please open a session first in Cash Management.")
+      return
+    }
     setCheckoutOpen(true)
-  }, [])
+  }, [activeSession])
 
   const handleCompleteOrder = useCallback(async (
     paymentMethod: string,

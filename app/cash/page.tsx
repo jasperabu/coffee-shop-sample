@@ -6,10 +6,12 @@ export default async function CashPage() {
   const supabase = await createClient()
   const today = getPhilippineDate()
 
-  const [sessionsResult, capitalResult, remittancesResult] = await Promise.all([
+  const [sessionsResult, capitalResult, remittancesResult, youthFundResult, youthFundTxnsResult] = await Promise.all([
     supabase.from("cash_sessions").select("*").order("date", { ascending: false }).limit(30),
     supabase.from("capital").select("*").limit(1).single(),
     supabase.from("remittances").select("*").order("created_at", { ascending: false }).limit(50),
+    supabase.from("youth_fund").select("*").eq("id", 1).single(),
+    supabase.from("youth_fund_transactions").select("*").order("created_at", { ascending: false }).limit(50),
   ])
 
   const sessions = sessionsResult.data || []
@@ -45,6 +47,8 @@ export default async function CashPage() {
       initialCapital={capitalResult.data || null}
       initialRemittances={remittancesResult.data || []}
       todayCashSales={todayCashSales}
+      initialYouthFundBalance={youthFundResult.data?.balance || 0}
+      initialYouthFundTransactions={youthFundTxnsResult.data || []}
     />
   )
 }
