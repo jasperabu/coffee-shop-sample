@@ -14,13 +14,19 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectSeparator,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils"
 import {
   Receipt,
   Search,
@@ -102,7 +108,7 @@ interface TransactionsClientProps {
   initialOrders: Order[]
 }
 
-type DateFilter = "today" | "yesterday" | "last7days" | "last30days" | "all"
+type DateFilter = "today" | "yesterday" | "last7days" | "last30days" | "all" | "custom" | string
 type PaymentFilter = "all" | "cash" | "gcash" 
 type PaymentStatusFilter = "all" | "paid" | "partially_paid" | "unpaid"
 
@@ -134,11 +140,22 @@ interface EditableOrder {
 export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
   const sidebarWidth = useSidebarWidth()
   const [dateFilter, setDateFilter] = useState<DateFilter>("today")
+  const [customDate, setCustomDate] = useState<Date | undefined>(undefined)
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all")
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatusFilter>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null)
   const [orders, setOrders] = useState(initialOrders)
+
+  // Compute available specific dates that have transactions
+  const availableDates = useMemo(() => {
+    const dates = new Set<string>()
+    orders.forEach(o => {
+      const d = toZonedTime(new Date(o.created_at), PH_TIMEZONE)
+      dates.add(format(d, "yyyy-MM-dd"))
+    })
+    return Array.from(dates).sort().reverse()
+  }, [orders])
 
   // Edit dialog state
   const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null)
@@ -183,7 +200,16 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
             return orderDate >= subDays(todayStart, 7)
           case "last30days":
             return orderDate >= subDays(todayStart, 30)
+          case "custom":
+            if (!customDate) return true
+            const customStart = startOfDay(customDate)
+            const customEnd = endOfDay(customDate)
+            return isWithinInterval(orderDate, { start: customStart, end: customEnd })
           default:
+            if (dateFilter.startsWith("date_")) {
+              const exactDateStr = dateFilter.replace("date_", "")
+              return format(orderDate, "yyyy-MM-dd") === exactDateStr
+            }
             return true
         }
       })
@@ -486,16 +512,59 @@ export function TransactionsClient({ initialOrders }: TransactionsClientProps) {
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex flex-wrap items-center gap-4">
-                <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilter)}>
-                  <SelectTrigger className="w-[160px]"><SelectValue placeholder="Select date" /></SelectTrigger>
+                <Select value={dateFilter} onValueChange={(v) => {
+                  setDateFilter(v as DateFilter)
+                  if (v !== "custom") setCustomDate(undefined)
+                }}>
+                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select date" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="yesterday">Yesterday</SelectItem>
-                    <SelectItem value="last7days">Last 7 Days</SelectItem>
-                    <SelectItem value="last30days">Last 30 Days</SelectItem>
-                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectGroup>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="yesterday">Yesterday</SelectItem>
+                      <SelectItem value="last7days">Last 7 Days</SelectItem>
+                      <SelectItem value="last30days">Last 30 Days</SelectItem>
+                      <SelectItem value="all">All Time</SelectItem>
+                      <SelectItem value="custom">Custom Date...</SelectItem>
+                    </SelectGroup>
+                    {availableDates.length > 0 && (
+                      <>
+                        <SelectSeparator />
+                        <SelectGroup>
+                          <SelectLabel>Available Dates</SelectLabel>
+                          {availableDates.map(dateStr => (
+                            <SelectItem key={dateStr} value={`date_${dateStr}`}>
+                              {format(parseISO(dateStr), "MMM d, yyyy")}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
+                {dateFilter === "custom" && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-[160px] justify-start text-left font-normal",
+                          !customDate && "text-muted-foreground"
+                        )}
+                      >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {customDate ? format(customDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={customDate}
+                        onSelect={setCustomDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                )}
                 <div className="flex gap-1">
                   {(["all", "cash", "gcash"] as PaymentFilter[]).map((method) => (
                     <Button key={method} variant={paymentFilter === method ? "default" : "outline"} size="sm" onClick={() => setPaymentFilter(method)} className="capitalize">
