@@ -202,14 +202,14 @@ export function POSClient({ initialCategories, initialProducts, initialAddons, i
       // Don't block the sale if inventory deduction fails
     }
 
-    // Update today's cash session if exists - only count actual cash received
-    const today = getPhilippineDate()
+    // Update the active cash session if exists - only count actual cash received
     const { data: session } = await supabase
       .from("cash_sessions")
       .select()
-      .eq("date", today)
       .eq("status", "open")
-      .single()
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     // For cash sessions, only count paid amounts (not unpaid debts)
     if (session && (paymentStatus === "paid" || paymentStatus === "partially_paid")) {

@@ -16,8 +16,8 @@ export default async function CashPage() {
 
   const sessions = sessionsResult.data || []
 
-  // Find the currently open session
-  const openSession = sessions.find((s) => s.status === "open" && s.date === today)
+  // Find the currently open session regardless of date
+  const openSession = sessions.find((s) => s.status === "open")
 
   // Only count sales from AFTER the open session started
   // If no open session, show 0 (session is closed, total_sales is already saved on it)

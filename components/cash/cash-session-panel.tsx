@@ -8,6 +8,17 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { createClient } from "@/lib/supabase/client"
 import { PlayCircle, StopCircle, Calculator } from "lucide-react"
 import { getPhilippineDate } from "@/lib/utils"
@@ -292,10 +303,26 @@ export function CashSessionPanel({ session, todaySales, onSessionUpdate }: CashS
           </div>
         </div>
 
-        <Button onClick={handleCloseSession} disabled={isLoading} className="w-full" size="lg">
-          <StopCircle className="mr-2 h-4 w-4" />
-          Close Session
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button disabled={isLoading} className="w-full" size="lg">
+              <StopCircle className="mr-2 h-4 w-4" />
+              Close Session
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to close this session?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Once closed, a session cannot be reopened. Please double-check your cash count before confirming.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleCloseSession}>Close Session</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   )

@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import type { CashSession } from "@/lib/types"
+import { useState, useEffect } from "react"
+import type { CashSession, CashDenomination } from "@/lib/types"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -23,8 +24,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { format, parseISO } from "date-fns"
-import { Trash2 } from "lucide-react"
+import { Trash2, Info, Loader2 } from "lucide-react"
 
 interface SessionHistoryProps {
   sessions: CashSession[]
@@ -33,6 +41,31 @@ interface SessionHistoryProps {
 
 export function SessionHistory({ sessions, onDelete }: SessionHistoryProps) {
   const [deleteTarget, setDeleteTarget] = useState<CashSession | null>(null)
+  const [selectedSession, setSelectedSession] = useState<CashSession | null>(null)
+  const [denominations, setDenominations] = useState<CashDenomination[]>([])
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false)
+
+  useEffect(() => {
+    if (selectedSession) {
+      const fetchDenominations = async () => {
+        setIsLoadingDetails(true)
+        const supabase = createClient()
+        const { data } = await supabase
+          .from("cash_denominations")
+          .select("*")
+          .eq("session_id", selectedSession.id)
+          .order("denomination", { ascending: false })
+        
+        if (data) {
+          setDenominations(data)
+        }
+        setIsLoadingDetails(false)
+      }
+      fetchDenominations()
+    } else {
+      setDenominations([])
+    }
+  }, [selectedSession])
 
   return (
     <>
@@ -87,16 +120,28 @@ export function SessionHistory({ sessions, onDelete }: SessionHistoryProps) {
                     )}
                   </TableCell>
                   <TableCell>
-                    {session.status === "closed" && (
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => setDeleteTarget(session)}
+                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        onClick={() => setSelectedSession(session)}
+                        title="View Cash Count Details"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Info className="h-4 w-4" />
                       </Button>
-                    )}
+                      {session.status === "closed" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeleteTarget(session)}
+                          title="Delete Session"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -136,6 +181,55 @@ export function SessionHistory({ sessions, onDelete }: SessionHistoryProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!selectedSession} onOpenChange={(open) => !open && setSelectedSession(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cash Count Details</DialogTitle>
+            <DialogDescription>
+              {selectedSession && `Session from ${format(parseISO(selectedSession.date), "MMM d, yyyy")}`}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {isLoadingDetails ? (
+            <div className="flex justify-center p-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : denominations.length > 0 ? (
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Denomination</TableHead>
+                    <TableHead className="text-center">Count</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {denominations.filter(d => d.count > 0).map((d) => (
+                    <TableRow key={d.id}>
+                      <TableCell className="font-medium">₱{Number(d.denomination).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">{d.count}</TableCell>
+                      <TableCell className="text-right">₱{Number(d.total).toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="font-bold bg-muted/50">
+                    <TableCell colSpan={2}>Grand Total</TableCell>
+                    <TableCell className="text-right">
+                      ₱{denominations.reduce((sum, d) => sum + Number(d.total), 0).toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground border rounded-lg bg-muted/20">
+              <Info className="h-8 w-8 mx-auto mb-3 opacity-20" />
+              <p>No cash count details found for this session.</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

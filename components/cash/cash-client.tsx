@@ -43,8 +43,7 @@ export function CashClient({
   const [youthFundTransactions, setYouthFundTransactions] = useState<YouthFundTransaction[]>(initialYouthFundTransactions)
 
   const today = getPhilippineDate()
-  const todaySessions = sessions.filter((s) => s.date === today)
-  const todaySession = todaySessions.find((s) => s.status === "open") ?? todaySessions[0] ?? undefined
+  const todaySession = sessions.find((s) => s.status === "open") ?? sessions.find((s) => s.date === today) ?? undefined
 
   const totalRemitted = remittances.reduce((sum, r) => sum + Number(r.amount), 0)
 
